@@ -67,4 +67,4 @@ class RandomAccess:
                 yield self[idx]
                 idx += 1
             except IndexError:
-                raise StopIteration
+                return
