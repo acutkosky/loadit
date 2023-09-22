@@ -38,8 +38,13 @@ class RandomAccess:
             max_shard_length=max_shard_length,
             load_fn = self.writer_pool.load_fn,
         )
+        def load_from_disk(d, k):
+            print("loading from disk...")
+            shard = self.shards[k]
+            d.cache[k] = shard
+            return shard
 
-        self.memory_cache = DictCache(max_size=max_cache_size, load_fn = lambda d, k: self.shards[k])
+        self.memory_cache = DictCache(max_size=max_cache_size, load_fn = load_from_disk)
 
     def __getitem__(self, idx: int) -> Any:
         shard_offset = idx % self.shards.max_shard_length
@@ -48,6 +53,7 @@ class RandomAccess:
             shard = self.memory_cache[start_idx]
             return shard[shard_offset]
         except KeyError:
+            print("cache miss....")
             raise IndexError(f"index {idx} out of range!")
         
         
