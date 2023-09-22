@@ -38,6 +38,9 @@ class RandomAccess:
             max_shard_length=max_shard_length,
             load_fn = self.writer_pool.load_fn,
         )
+        self.max_workers = max_workers
+        if self.max_workers > 1:
+            self.executor = ThreadPoolExecutor(max_workers=self.max_workers-1)
         def load_from_disk(d, k):
             shard = self.shards[k]
             d.cache[k] = shard
@@ -53,6 +56,9 @@ class RandomAccess:
             return shard[shard_offset]
         except KeyError:
             raise IndexError(f"index {idx} out of range!")
+
+        if self.max_workers > 1:
+            self.memory_cache.touch(start_idx + self.shards.max_shard_length, self.executor)
         
         
         

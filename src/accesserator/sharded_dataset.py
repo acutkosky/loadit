@@ -90,14 +90,22 @@ class ShardedDataset(AsyncCacheBase):
 
         
         self.pattern = "*.*.shard.pickle"
-        self.timestamps = defaultdict(time.time)
+        self.timestamps = {}
         self.observer = Observer()
         self.handler = TimestampHandler(self, [self.pattern])
         self.observer.schedule(self.handler, path=self.shard_dir)
         self.observer.start()
 
+        self.initialize_timestamps()
         super().__init__(max_size_bytes, load_fn)
 
+
+    def initialize_timestamps(self):
+        with self.writer_file_lock:
+            all_shard_info = self.get_all_shards()
+            for info in all_shard_info:
+                if info not in self.timestamps:
+                    self.timestamps[info.start] = time.time()
 
     def metadata(self):
         with self.writer_file_lock:
@@ -241,6 +249,17 @@ class ShardedDataset(AsyncCacheBase):
     def get_shard_path(self, start: int, data: List[Any]) -> Path:
         end = start + len(data)
         return self.shard_dir / f"{start}.{end}.shard.pickle"
+    def get_all_shards(self) -> List[ShardInfo]:
+        def shard_info_from_path(path):
+            stem = path.stem.split(".")
+            start = int(stem[0])
+            end = int(stem[1])
+            size = os.path.getsize(path)
+            return ShardInfo(path, start, end, size)
+
+        return [
+            shard_info_from_path(p) for p in self.shard_dir.glob("*.*.shard.pickle")
+        ]
 
 # class ShardedDataset:
 #     def __init__(
