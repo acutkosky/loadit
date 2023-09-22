@@ -115,60 +115,6 @@ class WriterPool:
         # self.queue_cv = Condition()
         self.queues = {writer: [] for writer in self.writers}
 
-    # def select_writer_for_shard(self, start_idx: int) -> Writer:
-    #     chosen_writer = None
-
-    #     # at worse we can start from 0...
-    #     best_gap = start_idx
-    #     for writer in self.writers:
-    #         gap = start_idx - writer.pending_max_idx
-    #         if gap > 0 and gap <= best_gap:
-    #             chosen_writer = writer
-    #             best_gap = gap
-    #     if chosen_writer is not None:
-    #         return chosen_writer
-
-    #     # all the writers are too big! we need to select one to reset
-    #     ordered_writers = sorted(self.writers, key=lambda w: w.pending_max_idx)
-
-    #     # if we have a "finished" writer, then choose that one...
-    #     last_writer = ordered_writers[-1]
-    #     if last_writer.finished:
-    #         return last_writer
-
-    #     # otherwise, choose a the writer with the smallest gap...
-    #     prev_idx = 0
-    #     writer_to_reset = ordered_writers[0]
-    #     smallest_gap = writer_to_reset.pending_max_idx
-    #     for writer in ordered_writers[1:]:
-    #         gap = writer.pending_max_idx - prev_idx
-    #         prev_idx = writer.pendinf_max_idx
-    #         if gap < smallest_gap:
-    #             smallest_gap = gap
-    #             writer_to_reset = writer
-
-    #     return writer_to_reset
-
-    # def write_shard_async(
-    #     self, start_idx: int, executor: Optional[ThreadPoolExecutor] = None
-    # ) -> bool:
-    #     fp = self.shards.get_shard_handle(start_idx)
-    #     # fp will go out of scope at the end of this function unless we submit
-    #     # a read request using it.
-    #     if fp is not None:
-    #         shard_info = self.shards.get_shard_info(start_idx)
-    #         if shard_info.end == shard_info.start + self.shards.max_shard_length:
-    #             # this shard already exists and is full: we don't need to write
-    #             # anything.
-    #             if executor is None:
-    #                 executor = self.executor
-    #             executor.submit(read_and_cache_shard, start_idx, fp, self.shards, self.cache)
-    #             return False
-    #     writer = self.add_to_queue(start_idx)
-    #     if writer is not None:
-    #         self.flush_queue_async(writer, executor)
-    #     return True
-
     def add_to_queue(self, start_idx: int) -> Optional[Writer]:
         # returns None if the selected writer does not need to be scheduled.
         writer_to_append = None
@@ -232,31 +178,3 @@ class WriterPool:
         result = self.block_until_write(queue_item, shards)
         return result
 
-#     def flush_queue(self, writer: Writer):
-#         try:
-#             queue = self.queues[writer]
-#             while len(queue) > 0:
-#                 with self.queue_lock:
-#                     start_idx = queue.pop(0)
-#                 shard = writer.iterate_and_write_shard(start_idx)
-#                 if len(shard) > 0:
-#                     self.cache[start_idx] = shard
-#             writer.pending_max_idx = writer.current_idx
-#         except Exception as e:
-#             # logger.debug(e)
-#             print(traceback.format_exc())
-
-#     def flush_queue_async(
-#         self, writer: Writer, executor: Optional[ThreadPoolExecutor] = None
-#     ) -> None:
-#         if executor is None:
-#             executor = self.executor
-#         executor.submit(self.flush_queue, writer)
-
-# def read_and_cache_shard(start_idx: int, fp: Any, shards: ShardedDataset, cache: SimpleCache) -> None:
-#     try:
-#         cache[start_idx] = shards.read_shard_from_handle(fp)
-#     except Exception as e:
-#         print(traceback.format_exc())
-    
-    

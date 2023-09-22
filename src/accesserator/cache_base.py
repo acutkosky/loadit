@@ -60,24 +60,6 @@ class AsyncCacheBase:
             value = self.load(key)
 
         return value
-            
-        # print("entryL ",entry)
-        # print("is miss: ",is_cache_miss(entry))
-
-        # if is_cache_miss:
-            
-            # with self.modification_cv:
-            #     entry, is_available = self.load(key)
-            #     if not is_available:
-            #         raise KeyError
-            #     entry, is_cache_miss = self.get(key)
-            #     while is_cache_miss(entry):
-            #         self.modification_cv.wait()
-            #         entry, is_cache_miss = self.load(key)
-            #         entry, is_cache_miss = self.get(key)
-
-
-        # return entry
 
     def touch(self, key: Any, executor: ThreadPoolExecutor) -> None:
         if key not in self:
@@ -141,68 +123,3 @@ class DictCache(AsyncCacheBase):
     def __contains__(self, key: Any) -> bool:
         return key in self.cache
 
-
-# class TimestampHandler(PatternMatchingEventHandler):
-#     def __init__(self, file_cache, patterns, *args, **kwargs):
-#         super().__init__(patterns, *args, **kwargs)
-#         self.file_cache = file_cache
-
-#     def on_created(self, event):
-#         path = Path(event.src_path)
-#         key = self.file_cache.get_key(path)
-#         self.file_cache.set_timestamp(key, time.time())
-
-
-# class FileCache(AsyncCacheBase):
-#     def __init__(
-#         self, max_size_bytes: Optional[int], dir: Path, pattern: str, open_mode: str="rb", load_fn: Optional[Callable]=None
-#     ):
-#         super().__init__(max_size_bytes, load_fn)
-#         self.pattern = pattern
-#         self.dir = dir
-#         self.open_mode = open_mode
-#         self.timestamps = defaultdict(time.time)
-#         self.file_notification_cv = Condition()
-#         self.observer = Observer()
-#         self.handler = TimestampHandler(self, self.pattern)
-#         self.observer.schedule(self.handler, path=dir)
-#         self.observer.start()
-
-#     def get_key(self, path):
-#         return path.relative_to(self.dir)
-
-#     def get_path_for_key(self, key):
-#         path = self.dir / key
-#         print("path: ",path)
-#         return path
-
-#     def delete(self, key: Any):
-#         path = self.cache[key]
-#         os.unlink(self.path)
-#         del self.cache[key]
-#         del self.timestamps[key]
-
-#     def get_(self, key: Any) -> Any:
-#         print("hello")
-#         path = self.get_path_for_key(key)
-#         try:
-#             fp = open(self.get_path_for_key(key), mode=self.open_mode)
-#         except FileNotFoundError:
-#             return cache_miss
-#         print(" now fp: ",fp)
-#         return fp
-
-#     def set_timestamp(self, key: Any, timestamp: int):
-#         self.timestamps[key] = timestamp
-
-#     def get_keys_sorted_by_timestamp(self) -> List[Any]:
-#         return [k for k, t in sorted(self.timestamps.items(), key=lambda k, t: t)]
-
-#     def size(self) -> int:
-#         usage = 0
-#         for path in self.dir.glob(self.pattern):
-#             usage += os.path.getsize(path)
-#         return usage
-
-#     def __contains__(self, key: Any) -> bool:
-#         return self.get_path_for_key(key) in set(self.dir.glob(self.pattern))
