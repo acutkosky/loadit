@@ -45,7 +45,6 @@ class AsyncCacheBase:
 
     def evict(self) -> None:
         if self.max_size is None:
-            print("no evict...")
             return
         while self.size() > self.max_size:
             sorted_keys = self.get_keys_sorted_by_timestamp()
@@ -60,7 +59,6 @@ class AsyncCacheBase:
         except KeyError:
             value = self.load(key)
 
-        print("returning value!", type(self))
         return value
             
         # print("entryL ",entry)
@@ -129,7 +127,6 @@ class DictCache(AsyncCacheBase):
         del self.timestamps[key]
 
     def get_(self, key: Any) -> Any:
-        print("hit: ", key in self.cache)
         return self.cache[key]
 
     def set_timestamp(self, key: Any, timestamp: int):
