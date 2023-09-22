@@ -46,9 +46,6 @@ def is_consistent_metadata(m1, m2):
    
 class TimestampHandler(PatternMatchingEventHandler):
     def __init__(self, file_cache, patterns, *args, **kwargs):
-        print("patterns: ",patterns)
-        print("args: ",args)
-        print("kwargs: ",kwargs)
         super().__init__(patterns, *args, **kwargs)
         self.file_cache = file_cache
 

@@ -133,7 +133,7 @@ class DictCache(AsyncCacheBase):
         self.timestamps[key] = timestamp
 
     def get_keys_sorted_by_timestamp(self) -> List[Any]:
-        return [k for k, t in sorted(self.timestamps.items(), key=lambda k, t: t)]
+        return [k for k, t in sorted(self.timestamps.items(), key=lambda kt: kt[1])]
 
     def size(self) -> int:
         return len(self.cache)

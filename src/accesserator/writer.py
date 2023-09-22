@@ -48,7 +48,6 @@ class Writer:
         )
         logger.debug(f"buffered: {shard_data}")
         written = shards.write_shard(start_idx, shard_data)
-        print("written: ",written)
         logger.debug("wrote...")
         if self.finished:
             shards.set_length_final(self.finished)
