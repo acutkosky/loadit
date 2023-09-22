@@ -26,6 +26,7 @@ classifiers = [
 ]
 dependencies = [
 "filelock",
+"watchdog",
 ]
 
 [project.urls]
