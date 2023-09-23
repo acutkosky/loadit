@@ -45,9 +45,10 @@ class Writer:
             start_idx, start_idx + shards.max_shard_length
         )
         logger.debug(f"buffered shard data for idx: {start_idx}")
-        written = shards.write_shard(start_idx, shard_data)
+        shards.write_shard(start_idx, shard_data)
         if self.finished:
-            shards.set_length_final(self.finished)
+            shards.set_length(self.current_idx+1)
+            shards.finalize_length(True)
         return shard_data
 
     def buffer_iterations(self, start_idx: int, end_idx: int) -> List[Any]:

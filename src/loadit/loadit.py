@@ -18,6 +18,37 @@ def preload_next_shard(loaded, idx):
     return idx + loaded.shards.max_shard_length
 
 
+def preload_next_shard_in_indices(indices, loader, idx):
+    return indices[max(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length
+
+
+class View:
+    def __init__(self, loader, indices):
+        self.loader = loader
+        self.indices = indices
+        self.preload_fn = lambda loader, idx: preload_next_shard_in_indices(
+            self.indices, loader, idx
+        )
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return View(self.loader, self.indices[idx])
+
+        return self.loader.get(self.indices[idx], self.preload_fn)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __iter__(self):
+        idx = 0
+        while True:
+            try:
+                yield self[idx]
+                idx += 1
+            except IndexError:
+                return
+
+
 class LoadIt:
     def __init__(
         self,
@@ -53,7 +84,7 @@ class LoadIt:
         self.memory_cache = DictCache(max_size=max_cache_size, load_fn=load_from_disk)
 
         if preload_fn is not None:
-            self.preload_fn = lambda idx: preload_fn(self, idx)
+            self.preload_fn = preload_fn
         else:
             self.preload_fn = None
 
@@ -63,6 +94,24 @@ class LoadIt:
         return start_idx
 
     def __getitem__(self, idx: int) -> Any:
+        return self.get(idx)
+
+    def get(self, idx: int, preload_fn: Optional[Callable] = None) -> Any:
+        if isinstance(idx, slice):
+            step = idx.step or 1
+            start = idx.start or 0
+            stop = idx.stop or len(self)
+
+            if start < 0:
+                start = start + len(self)
+
+            if stop < 0:
+                stop = stop + len(self)
+
+            indices = list(range(start, stop, step))
+            return View(self, indices)
+        if idx < 0:
+            idx = len(self) + idx
         start_idx = self.get_start_idx(idx)
         try:
             shard = self.memory_cache[start_idx]
@@ -70,8 +119,23 @@ class LoadIt:
         except KeyError:
             raise IndexError(f"index {idx} out of range!")
 
-        if self.max_workers > 1 and self.preload_fn is not None:
-            self.load_async(self.preload_fn(idx))
+        preload_fn = preload_fn or self.preload_fn
+        if self.max_workers > 1 and preload_fn is not None:
+            self.load_async(preload_fn(self, idx))
+
+    def __len__(self):
+        l = self.shards.length()
+        if l is not None:
+            return l
+        guess = 100
+        while l is None:
+            try:
+                self[guess]
+            except IndexError:
+                pass
+            guess *= 10
+            l = self.shards.length()
+        return l
 
     def load_async(self, idx) -> None:
         if self.executor is None:

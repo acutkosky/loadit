@@ -95,10 +95,6 @@ class ShardedDataset(AsyncCacheBase):
         self.initialize_timestamps()
         super().__init__(max_size_bytes, load_fn)
 
-    def stop_observer(self):
-        self.observer.unschedule_all()
-        self.observer.stop()
-        self.observer.join()
 
     def initialize_timestamps(self):
         with self.writer_file_lock:
@@ -106,6 +102,17 @@ class ShardedDataset(AsyncCacheBase):
             for info in all_shard_info:
                 if info not in self.timestamps:
                     self.timestamps[info.start] = time.time()
+
+    def length(self):
+        metadata = self.metadata()
+        if not metadata.length_final:
+            return None
+        return metadata.length
+    def __len__(self) -> int:
+        length = self.length()
+        if length is None:
+            raise RuntimeError("Length is currently unknown for this ShardedDataset!")
+        return length
 
     def metadata(self):
         with self.writer_file_lock:
@@ -172,7 +179,10 @@ class ShardedDataset(AsyncCacheBase):
     def __contains__(self, key: Any) -> bool:
         return self.get_path_for_key(key) in self.shard_dir.glob(self.pattern)
 
-    def set_length_final(self, value: bool) -> None:
+    def set_length(self, value: int) -> None:
+        self.set_metadata_entry("length", value)
+
+    def finalize_length(self, value: bool) -> None:
         self.set_metadata_entry("length_final", value)
 
     def write_shard(self, start: int, data: List[Any]) -> int:
@@ -195,7 +205,8 @@ class ShardedDataset(AsyncCacheBase):
                 pickle.dump(data, temp_shard)
             os.rename(self.scratch_path, shard_path)
             if len(data) < self.max_shard_length:
-                self.set_length_final(True)
+                self.set_length(start + len(data))
+                self.finalize_length(True)
             self.cleanup_overlapping_shards(start)
         if prev_shard_info is not None:
             return start + len(data) - prev_shard_info.end
