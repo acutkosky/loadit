@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# from .accesserator import RandomAccess
 from .sharded_dataset import ShardedDataset
-from .cache_base import DictCache
+from .cache_base import AsyncCacheBase
+from .dict_cache import DictCache
 from .writer import WriterPool
-from .accesserator import RandomAccess
+from .loadit import LoadIt

@@ -14,7 +14,7 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 from threading import Condition
 import logging
-logger = logging.getLogger("randomacces")
+logger = logging.getLogger("loadit")
 ShardInfo = namedtuple(
     "ShardInfo",
     [
@@ -60,15 +60,12 @@ class ShardedDataset(AsyncCacheBase):
         self.max_shard_length = max_shard_length
         self.root_dir = Path(root_dir)
         self.shard_dir = self.root_dir / "shards"
-        self.lock_dir = self.root_dir/ "flocks"
+        self.lock_dir = self.root_dir/ "locks"
         self.scratch_dir = self.root_dir / "scratch"
 
         self.shard_dir.mkdir(parents=True, exist_ok=True)
         self.lock_dir.mkdir(exist_ok=True)
         self.scratch_dir.mkdir(exist_ok=True)
-        
-
-        
         self.scratch_path = self.scratch_dir / "shard.pickle"
 
         self.metadata_path = self.root_dir / "metadata.json"
@@ -88,17 +85,20 @@ class ShardedDataset(AsyncCacheBase):
                 with open(self.metadata_path, "w") as fp:
                     json.dump(metadata._asdict(), fp)
 
-        
         self.pattern = "*.*.shard.pickle"
         self.timestamps = {}
         self.observer = Observer()
         self.handler = TimestampHandler(self, [self.pattern])
-        self.observer.schedule(self.handler, path=self.shard_dir)
+        self.observer.schedule(self.handler, path=self.shard_dir, recursive=False)
         self.observer.start()
 
         self.initialize_timestamps()
         super().__init__(max_size_bytes, load_fn)
 
+    def stop_observer(self):
+        self.observer.unschedule_all()
+        self.observer.stop()
+        self.observer.join()
 
     def initialize_timestamps(self):
         with self.writer_file_lock:
@@ -150,15 +150,11 @@ class ShardedDataset(AsyncCacheBase):
         metadata = self.metadata()
         try:
             fp = open(self.get_path_for_key(start_idx), "rb")
-            # print("cache hit on: ",start_idx)
         except FileNotFoundError:
-            # print("cache miss on: ",start_idx)
             raise KeyError
             
-        # print("fp: ",fp)
         data = pickle.load(fp)
         fp.close()
-        # print("data: ",data)
         return data
         
     def set_timestamp(self, key: Any, timestamp: int):
@@ -174,7 +170,7 @@ class ShardedDataset(AsyncCacheBase):
         return usage
 
     def __contains__(self, key: Any) -> bool:
-        return self.get_path_for_key(key) in set(self.dir.glob(self.pattern))
+        return self.get_path_for_key(key) in self.shard_dir.glob(self.pattern)
 
     def set_length_final(self, value: bool) -> None:
         self.set_metadata_entry("length_final", value)

@@ -1,33 +1,32 @@
-from typing import Iterator, Any, Optional, List, Callable
+from typing import Iterable, Any, Optional, List, Callable, Union
 from .sharded_dataset import ShardedDataset, ShardInfo
 from collections import deque
 from threading import Lock, Condition
 import traceback
 import logging
-logger = logging.getLogger("randomacces")
+logger = logging.getLogger("loadit")
 
 class Writer:
     def __init__(
         self,
-        it: Iterator,
-        iterator_generator: Optional[Callable[None, Iterator]] = None,
+        create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
     ):
-        self.it = enumerate(it)
+        if not is_iterator_creator(create_it):
+            assert is_iterator(create_it), "You must supply either an iteratable, or a function that creates iteratables!"
+            self.it = enumerate(create_it)
+        else:
+            self.it = enumerate(create_it())
         self.current_idx = -1
-        self.pending_max_idx = -1
         self.finished = False
-        self.iterator_generator = iterator_generator
+        self.create_it = create_it
 
     def reset_iterator(self):
-        logger.info("reseting....")
-        assert self.iterator_generator is not None, "must supply an iterator_generator!"
-
-        self.it = enumerate(self.iterator_generator())
+        logger.debug("resetting iterator.")
+        assert is_iterator_creator(self.create_it), "Cannot reset iterator: please provide function create_it() -> Iterator rather than a raw iterator!"
+        self.it = enumerate(self.create_it())
+            
         self.finished = False
         self.current_idx = -1
-
-    def update_pending_max_idx(self, start_idx: int, shards: ShardedDataset) -> None:
-        self.pending_max_idx = start_idx + shards.max_shard_length
 
     def iterate_and_write_shard(self, start_idx: int, shards: ShardedDataset) -> List[Any]:
         # Shards must be aligned with self.shards.max_shard_length
@@ -39,25 +38,21 @@ class Writer:
         # take care of throwing some error if that's not possible.
         if start_idx < self.current_idx:
             self.reset_iterator()
-            logging.info(f"reset, starting up... {start_idx}")
 
         # read in up to self.shards.max_shard_length iterations.
         # this should update self.current_idx as well.
         shard_data = self.buffer_iterations(
             start_idx, start_idx + shards.max_shard_length
         )
-        logger.debug(f"buffered: {shard_data}")
+        logger.debug(f"buffered shard data for idx: {start_idx}")
         written = shards.write_shard(start_idx, shard_data)
-        logger.debug("wrote...")
         if self.finished:
             shards.set_length_final(self.finished)
         return shard_data
 
     def buffer_iterations(self, start_idx: int, end_idx: int) -> List[Any]:
         buffer = []
-        logger.debug(f"start idx: {start_idx}  end: {end_idx} current_idx: {self.current_idx}")
         while self.current_idx  < start_idx - 1:
-            logger.info("shouldn't be here...")
             try:
                 # we'll wrap the iterator in an enumerate in __init__
                 self.current_idx, datum = next(self.it)
@@ -86,6 +81,18 @@ def exactly_one_not_none(*items):
                 result = True
     return result
 
+def is_iterator(it: Any) -> bool:
+    try:
+        it = enumerate(it)
+        return True
+    except:
+        return False
+def is_iterator_creator(create_it: Any) -> bool:
+    try:
+        return is_iterator(create_it())
+    except:
+        return False
+
 class QueueItem:
     def __init__(self, start_idx: int, writer: Writer):
         self.start_idx = start_idx
@@ -97,18 +104,15 @@ class WriterPool:
     def __init__(
         self,
         writers: Optional[List[Writer]] = None,
-        iterator_generator: Optional[Callable[None, Iterator]] = None,
-        iterator: Optional[Iterator] = None,
+        create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
         num_workers: int = 1,
     ):
-        assert exactly_one_not_none(writers, iterator_generator, iterator)
+        assert exactly_one_not_none(writers, create_it)
         if writers is not None:
             self.writers = writers
-        if iterator is not None:
-            self.writers = [Writer(iterator)]
-        if iterator_generator is not None:
+        if create_it is not None:
             self.writers = [
-                Writer(iterator_generator(), iterator_generator)
+                Writer(create_it=create_it)
                 for _ in range(num_workers)
             ]
         self.queue_lock = Lock()

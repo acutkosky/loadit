@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "accesserator"
+name = "loadit"
 dynamic = ["version"]
 description = ''
 readme = "README.md"
@@ -30,9 +30,12 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/unknown/accesserator#readme"
-Issues = "https://github.com/unknown/accesserator/issues"
-Source = "https://github.com/unknown/accesserator"
+Documentation = "https://github.com/acutkosky/loadit#readme"
+Issues = "https://github.com/acutkosky/loadit/issues"
+Source = "https://github.com/acutkosky/loadit"
 
 [tool.hatch.version]
-path = "src/accesserator/__about__.py"
+path = "src/loadit/__about__.py"
+
+[tool.pytest.ini_options]
+tmp_path_retention_policy = "none"
