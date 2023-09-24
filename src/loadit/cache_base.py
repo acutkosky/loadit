@@ -2,6 +2,7 @@ import time
 from typing import List, Any, Optional, Callable
 from threading import Condition
 import logging
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("randomacces")
@@ -29,7 +30,7 @@ def is_not_found(value):
     return isinstance(value, NotFound)
 
 
-def always_unavailable(key: Any):
+def always_unavailable(cache: Any, key: Any):
     raise KeyError(
         f"key {key} does not exist yet! Please provide a method for loading new keys!"
     )
@@ -53,6 +54,8 @@ class AsyncCacheBase:
             load_fn = always_unavailable
         self.load_fn = load_fn
 
+        self.in_progress_loads = defaultdict(lambda: 0)
+
         self._cache_miss_count = 0
 
     def evict(self) -> None:
@@ -60,7 +63,6 @@ class AsyncCacheBase:
             return
         while self.size() > self.max_size:
             sorted_keys = self.get_keys_sorted_by_timestamp()
-            # print(sorted_keys)
             self.delete(sorted_keys[0])
 
     def __getitem__(self, key: Any) -> Any:
@@ -70,19 +72,27 @@ class AsyncCacheBase:
             value = self.get(key)
         except KeyError:
             self._cache_miss_count += 1
-            value = self.load(key)
+            self.in_progress_loads[key] += 1
+            value = self._load(key)
 
         return value
 
     def load_async(self, key: Any, executor: ThreadPoolExecutor) -> None:
-        if key not in self:
-            executor.submit(self.load, key)
+        if key not in self and self.in_progress_loads[key] == 0:
+            self.in_progress_loads[key] += 1
+            executor.submit(self._load, key)
 
     def set_load_fn(self, load_fn: Callable[Any, Any]) -> None:
         self.load_fn = load_fn
 
-    def load(self, key: Any) -> Any:
+    def _load(self, key: Any) -> Any:
         result = self.load_fn(self, key)
+        # This may be a little race-y: other threads may attempt to increment self.in_progress_loads[key]
+        # and if this assignment to zero is interleaved, they will increment to 1 as opposed to some other value.
+        # However, that is probably acceptable: the important invariant for correctness is that self.in_progress_loads[key]
+        # cannot be non-zero while no _load tasks are in-progress.
+        # If it is zero when _load tasks are in-progress, that just means we might schedule some extra calls to _load.
+        self.in_progress_loads[key] = 0
         self.set_timestamp(key, time.time())
         self.evict()
         return result

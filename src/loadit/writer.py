@@ -110,6 +110,7 @@ class QueueItem:
         self.writer = writer
         self.cv = Condition()
         self.result = None
+        self.finished = False
 
 
 class WriterPool:
@@ -132,6 +133,7 @@ class WriterPool:
         # returns None if the selected writer does not need to be scheduled.
         writer_to_append = None
         smallest_gap = float("inf")
+        # print("adding to queue: ",start_idx)
         with self.queue_lock:
             for writer in self.writers:
                 queue = self.queues[writer]
@@ -150,7 +152,8 @@ class WriterPool:
                             return queue[i]
                         if queue[i].start_idx > start_idx:
                             queue_item = QueueItem(start_idx, writer)
-                            queue.insert(i - 1, queue_item)
+                            # print("inserting: ",start_idx," into queue: ",self.writers.index(writer), queue_str(queue), print_wait_counts(self))
+                            queue.insert(i, queue_item)
                             return queue_item
 
                 # if the writer will end before start_idx,
@@ -164,6 +167,7 @@ class WriterPool:
             # no drive-by writing possible, so let's just pick
             # the one with smallest gap
             queue_item = QueueItem(start_idx, writer_to_append)
+            # print("appending: ",start_idx," into queue: ",self.writers.index(writer_to_append))
             self.queues[writer_to_append].append(queue_item)
             return queue_item
 
@@ -171,19 +175,28 @@ class WriterPool:
         self, queue_item: QueueItem, shards: ShardedDataset
     ) -> List[Any]:
         writer = queue_item.writer
+        wi = self.writers.index(writer)
         start_idx = queue_item.start_idx
         queue = self.queues[writer]
-        while queue_item.result is None:
-            with self.queue_lock:
-                if queue[0] == queue_item:
-                    data = writer.iterate_and_write_shard(start_idx, shards)
-                    queue.pop(0)
-                    with queue_item.cv:
+        next_cv = None
+        # must get cv before queue_lock
+        with queue_item.cv:
+            while not queue_item.finished:
+                with self.queue_lock:
+                    if queue[0] == queue_item:
+                        data = writer.iterate_and_write_shard(start_idx, shards)
+                        queue.pop(0)
                         queue_item.result = data
+                        queue_item.finished = True
                         queue_item.cv.notify_all()
                         break
-            with queue_item.cv:
                 queue_item.cv.wait()
+            with self.queue_lock:
+                if len(queue) > 0:
+                    next_cv = queue[0].cv
+        if next_cv:
+            with next_cv:
+                next_cv.notify()
 
         if len(queue_item.result) == 0:
             raise KeyError(f"start_idx {start_idx} is out of range!")
@@ -193,3 +206,4 @@ class WriterPool:
         queue_item = self.add_to_queue(start_idx)
         result = self.block_until_write(queue_item, shards)
         return result
+

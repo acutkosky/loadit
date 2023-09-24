@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "loadit"
 dynamic = ["version"]
-description = ''
+description = ""
 readme = "README.md"
 requires-python = ">=3.7"
 license = "Apache-2.0"

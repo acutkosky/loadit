@@ -70,12 +70,38 @@ def one_item_memory_size():
 @pytest.fixture
 def small_cache_loader(tmp_path):
     loader = loadit.LoadIt(
-        create_it=create_it,
+        create_it=lambda: create_it(),
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=10,
-        max_workers=2,
+        max_workers=5,
         memory_limit=20 * 16 * one_item_memory_size(),
+    )
+    return loader
+
+
+@pytest.fixture
+def nowriter_loader(tmp_path):
+    loader = loadit.LoadIt(
+        create_it=None,
+        root_dir=tmp_path,
+        max_shard_length=16,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    return loader
+
+
+@pytest.fixture
+def full_save_loader(tmp_path):
+    loader = loadit.LoadIt(
+        create_it=lambda: create_it(N=16 * 100),
+        root_dir=tmp_path,
+        max_shard_length=16,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
     )
     return loader
 
@@ -165,12 +191,27 @@ def test_preload(small_cache_loader):
     loader = small_cache_loader
 
     x = small_cache_loader[0]
+    assert loader.memory_cache._cache_miss_count == 1
+
     # sleep for 1 second to give the next shard time to preload
     time.sleep(1)
+    # disable preloading:
+    loader.preload_fn = None
+    for i in range(1, loader.max_workers + 1):
+        x = small_cache_loader[i * loader.shards.max_shard_length]
 
-    x = small_cache_loader[loader.shards.max_shard_length]
+    assert loader.memory_cache._cache_miss_count == 2
 
-    assert loader.memory_cache._cache_miss_count == 1
+
+def test_reuse_data(full_save_loader, nowriter_loader):
+    # write all the data
+    for x in full_save_loader:
+        pass
+
+    # read without writers
+    for i, x in enumerate(nowriter_loader):
+        validate_data(x, i)
+        pass
 
 
 def test_uses_multiple_writers(small_cache_loader):

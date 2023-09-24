@@ -1,7 +1,7 @@
 from .sharded_dataset import ShardedDataset
 from .dict_cache import DictCache
 from .writer import WriterPool
-from typing import Any, Union, Optional, Iterable, Callable
+from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,13 +9,14 @@ import logging
 
 logger = logging.getLogger("randomacces")
 
+PreloadType = Callable[[Any, int], List[int]]
 
-def preload_next_shard(loader, idx):
-    return idx + loader.shards.max_shard_length
+def preload_next_shard(loader: Any, idx: int) -> List[int]:
+    return [idx + i * loader.shards.max_shard_length for i in range(1, loader.max_workers)]
 
 
-def preload_next_shard_in_indices(indices, loader, idx):
-    return indices[max(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length
+def preload_next_shard_in_indices(indices: List[int], loader: Any, idx: int) -> List[int]:
+    return [indices[max(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]
 
 
 class View:
@@ -48,23 +49,29 @@ class View:
 class LoadIt:
     def __init__(
         self,
-        create_it: Union[Iterable, Callable[None, Iterable]],
+        create_it: Optional[Union[Iterable, Callable[None, Iterable]]],
         root_dir: Union[str, Path] = "cache/",
         max_shard_length: int = 4096,
-        max_cache_size: int = 10,
+        max_cache_size: int = 1024,
         max_workers: int = 1,
         memory_limit: Optional[int] = None,
-        preload_fn: Optional[Callable] = preload_next_shard,
+        preload_fn: Optional[PreloadType] = preload_next_shard,
     ):
-        self.writer_pool = WriterPool(
-            create_it=create_it,
-            num_workers=max_workers,
-        )
+        if create_it is not None:
+            self.writer_pool = WriterPool(
+                create_it=create_it,
+                num_workers=max_workers,
+            )
+            shard_load_fn = self.writer_pool.load_fn
+        else:
+            self.writer_pool = None
+            shard_load_fn = None
+            
         self.shards = ShardedDataset(
             max_size_bytes=memory_limit,
             root_dir=root_dir,
             max_shard_length=max_shard_length,
-            load_fn=self.writer_pool.load_fn,
+            load_fn=shard_load_fn,
         )
         self.max_workers = max_workers
         if self.max_workers > 1:
@@ -89,7 +96,7 @@ class LoadIt:
     def __getitem__(self, idx: int) -> Any:
         return self.get(idx)
 
-    def get(self, idx: int, preload_fn: Optional[Callable] = None) -> Any:
+    def get(self, idx: int, preload_fn: Optional[PreloadType] = None) -> Any:
         if isinstance(idx, slice):
             step = idx.step or 1
             start = idx.start or 0
@@ -106,14 +113,19 @@ class LoadIt:
         if idx < 0:
             idx = len(self) + idx
         start_idx = self.get_start_idx(idx)
+
+        # schedule a preload if enabled
+        preload_fn = preload_fn or self.preload_fn
+        if self.max_workers > 1 and preload_fn is not None:
+            for n_idx in preload_fn(self, idx):
+                self.load_async(n_idx)
+
+        # actually fetch the requested data        
         try:
             shard = self.memory_cache[start_idx]
         except KeyError:
             raise IndexError(f"index {idx} out of range!")
 
-        preload_fn = preload_fn or self.preload_fn
-        if self.max_workers > 1 and preload_fn is not None:
-            self.load_async(preload_fn(self, idx))
 
         return shard[idx - start_idx]
 
