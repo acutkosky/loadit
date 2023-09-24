@@ -59,7 +59,7 @@ def memory_limit(request, max_shard_length):
     if request.param is None:
         return None
     return request.param * max_shard_length * one_item_memory_size()
-    
+
 
 def one_item_memory_size():
     it = create_it(N=10)
@@ -67,16 +67,18 @@ def one_item_memory_size():
     s = pickle.dumps(minishard)
     return len(s) / 10
 
+
 @pytest.fixture
-def small_cache_loader(tmp_path, memory_limit):
+def small_cache_loader(tmp_path):
     loader = loadit.LoadIt(
         create_it=create_it,
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=10,
-        memory_limit=20*16*one_item_memory_size()
+        memory_limit=20 * 16 * one_item_memory_size(),
     )
     return loader
+
 
 @pytest.fixture
 def loader(
@@ -132,9 +134,12 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
             break
     assert i == min(100, it_size - 1)
 
+
 def test_caching(small_cache_loader):
     loader = small_cache_loader
-    indices = list(range(0, loader.shards.max_shard_length * 21, loader.shards.max_shard_length))
+    indices = list(
+        range(0, loader.shards.max_shard_length * 21, loader.shards.max_shard_length)
+    )
     for i in indices:
         x = loader[i]
 
@@ -143,6 +148,17 @@ def test_caching(small_cache_loader):
 
     assert loader.memory_cache._cache_miss_count == expected_memory_miss
     assert loader.shards._cache_miss_count == expected_shard_miss
+
+    next_indices = indices[::-1]
+    for i in next_indices:
+        x = loader[i]
+
+    expected_memory_miss += 11
+    expected_shard_miss += 1
+
+    assert loader.memory_cache._cache_miss_count == expected_memory_miss
+    assert loader.shards._cache_miss_count == expected_shard_miss
+
 
 def test_loader_random_access(loader, it_size, random_indices, verify_sizes):
     for i in range(100):
