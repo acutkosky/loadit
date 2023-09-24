@@ -42,5 +42,3 @@ Source = "https://github.com/acutkosky/loadit"
 [tool.hatch.version]
 path = "src/loadit/__about__.py"
 
-[tool.pytest.ini_options]
-tmp_path_retention_policy = "none"
