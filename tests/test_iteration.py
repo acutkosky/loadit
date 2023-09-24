@@ -32,10 +32,10 @@ def create_fixture(name, values):
 
 
 load_from_it = create_fixture("load_from_it", None)
-it_size = create_fixture("it_size", [100, 2000])
+it_size = create_fixture("it_size", [100, 2500])
 delay = create_fixture("delay", [0, 0.0001])
 max_shard_length = create_fixture("max_shard_length", [64, 512])
-max_cache_size = create_fixture("max_cache_size", [10, 100])
+max_cache_size = create_fixture("max_cache_size", [5, 100])
 max_workers = create_fixture("max_workers", [1, 5])
 
 
@@ -55,14 +55,28 @@ def random_indices():
 
 
 @pytest.fixture(params=[10, None])
-def memory_limit(request):
+def memory_limit(request, max_shard_length):
     if request.param is None:
         return None
+    return request.param * max_shard_length * one_item_memory_size()
+    
+
+def one_item_memory_size():
     it = create_it(N=10)
     minishard = list(it)
     s = pickle.dumps(minishard)
-    return request.param * len(s) / 10
+    return len(s) / 10
 
+@pytest.fixture
+def small_cache_loader(tmp_path, memory_limit):
+    loader = loadit.LoadIt(
+        create_it=create_it,
+        root_dir=tmp_path,
+        max_shard_length=16,
+        max_cache_size=10,
+        memory_limit=20*16*one_item_memory_size()
+    )
+    return loader
 
 @pytest.fixture
 def loader(
@@ -106,7 +120,7 @@ def pytest_generate_tests(metafunc):
         test_slicing,
     ]:
         metafunc.parametrize("load_from_it", [False])
-    else:
+    elif "load_from_it" in metafunc.fixturenames:
         metafunc.parametrize("load_from_it", [True, False])
 
 
@@ -118,6 +132,17 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
             break
     assert i == min(100, it_size - 1)
 
+def test_caching(small_cache_loader):
+    loader = small_cache_loader
+    indices = list(range(0, loader.shards.max_shard_length * 21, loader.shards.max_shard_length))
+    for i in indices:
+        x = loader[i]
+
+    expected_memory_miss = 21
+    expected_shard_miss = 21
+
+    assert loader.memory_cache._cache_miss_count == expected_memory_miss
+    assert loader.shards._cache_miss_count == expected_shard_miss
 
 def test_loader_random_access(loader, it_size, random_indices, verify_sizes):
     for i in range(100):

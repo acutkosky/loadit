@@ -43,6 +43,9 @@ class AsyncCacheBase:
             load_fn = always_unavailable
         self.load_fn = load_fn
 
+        self._cache_miss_count = 0
+        
+
     def evict(self) -> None:
         if self.max_size is None:
             return
@@ -57,6 +60,7 @@ class AsyncCacheBase:
         try:
             value = self.get(key)
         except KeyError:
+            self._cache_miss_count += 1
             value = self.load(key)
 
         return value
