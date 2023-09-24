@@ -51,9 +51,9 @@ class LoadIt:
         self,
         create_it: Optional[Union[Iterable, Callable[None, Iterable]]],
         root_dir: Union[str, Path] = "cache/",
-        max_shard_length: int = 4096,
-        max_cache_size: int = 1024,
-        max_workers: int = 1,
+        max_shard_length: int = 512,
+        max_cache_size: int = 128,
+        max_workers: int = 3,
         memory_limit: Optional[int] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
     ):
