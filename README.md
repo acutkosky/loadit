@@ -105,7 +105,7 @@ fetches the next `max_workers-1` shards.
 ## Installation
 
 ```console
-pip install https://github.com/acutkosky/loadit.git@main
+pip install git+https://github.com/acutkosky/loadit.git@main
 ```
 
 ## License
