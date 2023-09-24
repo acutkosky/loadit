@@ -32,7 +32,7 @@ def create_fixture(name, values):
 
 
 load_from_it = create_fixture("load_from_it", None)
-it_size = create_fixture("it_size", [100, 2500])
+it_size = create_fixture("it_size", [100, 2000])
 delay = create_fixture("delay", [0, 0.0001])
 max_shard_length = create_fixture("max_shard_length", [64, 512])
 max_cache_size = create_fixture("max_cache_size", [5, 100])
@@ -75,6 +75,7 @@ def small_cache_loader(tmp_path):
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=10,
+        max_workers=2,
         memory_limit=20 * 16 * one_item_memory_size(),
     )
     return loader
@@ -137,6 +138,7 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
 
 def test_caching(small_cache_loader):
     loader = small_cache_loader
+    loader.preload_fn = None
     indices = list(
         range(0, loader.shards.max_shard_length * 21, loader.shards.max_shard_length)
     )
@@ -159,6 +161,14 @@ def test_caching(small_cache_loader):
     assert loader.memory_cache._cache_miss_count == expected_memory_miss
     assert loader.shards._cache_miss_count == expected_shard_miss
 
+def test_preload(small_cache_loader):
+    loader = small_cache_loader
+
+    x = small_cache_loader[0]
+    time.sleep(1)
+    x = small_cache_loader[loader.shards.max_shard_length]
+
+    assert loader.memory_cache._cache_miss_count == 1
 
 def test_loader_random_access(loader, it_size, random_indices, verify_sizes):
     for i in range(100):

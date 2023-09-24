@@ -14,8 +14,8 @@ import logging
 logger = logging.getLogger("randomacces")
 
 
-def preload_next_shard(loaded, idx):
-    return idx + loaded.shards.max_shard_length
+def preload_next_shard(loader, idx):
+    return idx + loader.shards.max_shard_length
 
 
 def preload_next_shard_in_indices(indices, loader, idx):
@@ -83,10 +83,7 @@ class LoadIt:
 
         self.memory_cache = DictCache(max_size=max_cache_size, load_fn=load_from_disk)
 
-        if preload_fn is not None:
-            self.preload_fn = preload_fn
-        else:
-            self.preload_fn = None
+        self.preload_fn = preload_fn
 
     def get_start_idx(self, idx: int) -> int:
         shard_offset = idx % self.shards.max_shard_length
@@ -115,13 +112,14 @@ class LoadIt:
         start_idx = self.get_start_idx(idx)
         try:
             shard = self.memory_cache[start_idx]
-            return shard[idx - start_idx]
         except KeyError:
             raise IndexError(f"index {idx} out of range!")
 
         preload_fn = preload_fn or self.preload_fn
         if self.max_workers > 1 and preload_fn is not None:
             self.load_async(preload_fn(self, idx))
+
+        return shard[idx - start_idx]
 
     def __len__(self):
         l = self.shards.length()
