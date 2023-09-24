@@ -1,13 +1,9 @@
-from .sharded_dataset import ShardedDataset, ShardInfo
+from .sharded_dataset import ShardedDataset
 from .dict_cache import DictCache
-from .writer import WriterPool, Writer
-from typing import Any, Union, List, Optional, Iterable, Dict, Callable
+from .writer import WriterPool
+from typing import Any, Union, Optional, Iterable, Callable
 from pathlib import Path
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
-from filelock import FileLock
-import json
 
 import logging
 
@@ -122,18 +118,18 @@ class LoadIt:
         return shard[idx - start_idx]
 
     def __len__(self):
-        l = self.shards.length()
-        if l is not None:
-            return l
+        optional_length = self.shards.length()
+        if optional_length is not None:
+            return optional_length
         guess = 100
-        while l is None:
+        while optional_length is None:
             try:
                 self[guess]
             except IndexError:
                 pass
             guess *= 10
-            l = self.shards.length()
-        return l
+            optional_length = self.shards.length()
+        return optional_length
 
     def load_async(self, idx) -> None:
         if self.executor is None:

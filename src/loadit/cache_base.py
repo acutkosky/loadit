@@ -1,13 +1,8 @@
 import time
-from typing import List, Any, Optional, Dict, Callable
+from typing import List, Any, Optional, Callable
 from threading import Condition
 import logging
-from collections import namedtuple, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from watchdog.events import PatternMatchingEventHandler
-from watchdog.observers import Observer
-import os
 
 logger = logging.getLogger("randomacces")
 
@@ -15,28 +10,43 @@ logger = logging.getLogger("randomacces")
 class CacheMiss:
     pass
 
+
 cache_miss = CacheMiss()
+
 
 class NotFound:
     pass
+
+
 not_found = NotFound()
+
 
 def is_cache_miss(value):
     return isinstance(value, CacheMiss)
 
+
 def is_not_found(value):
     return isinstance(value, NotFound)
 
+
 def always_unavailable(key: Any):
-    raise KeyError(f"key {key} does not exist yet! Please provide a method for loading new keys!")
+    raise KeyError(
+        f"key {key} does not exist yet! Please provide a method for loading new keys!"
+    )
+
 
 # special return values
 cache_miss = ("cache_miss", object())  # the requested object cannot be loaded
-not_available = ("not_present", object())  # the requested object is not in the cache currently.
+not_available = (
+    "not_present",
+    object(),
+)  # the requested object is not in the cache currently.
 
 
 class AsyncCacheBase:
-    def __init__(self, max_size: Optional[int], load_fn: Optional[Callable[Any, bool]] = None):
+    def __init__(
+        self, max_size: Optional[int], load_fn: Optional[Callable[Any, bool]] = None
+    ):
         self.max_size = max_size
         self.modification_cv = Condition()
         if load_fn is None:
@@ -44,7 +54,6 @@ class AsyncCacheBase:
         self.load_fn = load_fn
 
         self._cache_miss_count = 0
-        
 
     def evict(self) -> None:
         if self.max_size is None:
@@ -100,4 +109,3 @@ class AsyncCacheBase:
 
     def __contains__(self, key: Any) -> bool:
         raise NotImplementedError
-

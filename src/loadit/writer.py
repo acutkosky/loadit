@@ -1,8 +1,6 @@
 from typing import Iterable, Any, Optional, List, Callable, Union
-from .sharded_dataset import ShardedDataset, ShardInfo
-from collections import deque
+from .sharded_dataset import ShardedDataset
 from threading import Lock, Condition
-import traceback
 import logging
 
 logger = logging.getLogger("loadit")
@@ -95,14 +93,14 @@ def is_iterator(it: Any) -> bool:
     try:
         it = enumerate(it)
         return True
-    except:
+    except TypeError:
         return False
 
 
 def is_iterator_creator(create_it: Any) -> bool:
     try:
         return is_iterator(create_it())
-    except:
+    except TypeError:
         return False
 
 

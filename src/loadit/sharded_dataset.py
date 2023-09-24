@@ -1,19 +1,16 @@
-import filelock
 import pickle
 import os
-import threading
 import time
 from pathlib import Path
 import json
-from collections import namedtuple, defaultdict
-from typing import Any, List, Optional, Generator, Callable
+from collections import namedtuple
+from typing import Any, List, Optional, Callable
 from filelock import FileLock
 from .cache_base import AsyncCacheBase
-from .cache_base import cache_miss, not_found, is_cache_miss, is_not_found
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
-from threading import Condition
 import logging
+
 logger = logging.getLogger("loadit")
 ShardInfo = namedtuple(
     "ShardInfo",
@@ -43,7 +40,7 @@ def is_consistent_metadata(m1, m2):
             return False
     return True
 
-   
+
 class TimestampHandler(PatternMatchingEventHandler):
     def __init__(self, file_cache, patterns, *args, **kwargs):
         super().__init__(patterns, *args, **kwargs)
@@ -54,13 +51,19 @@ class TimestampHandler(PatternMatchingEventHandler):
         key = self.file_cache.get_key(path)
         self.file_cache.set_timestamp(key, time.time())
 
-class ShardedDataset(AsyncCacheBase):
 
-    def __init__(self, max_size_bytes: Optional[int], root_dir: str, max_shard_length: int = 4096, load_fn: Optional[Callable] = None):
+class ShardedDataset(AsyncCacheBase):
+    def __init__(
+        self,
+        max_size_bytes: Optional[int],
+        root_dir: str,
+        max_shard_length: int = 4096,
+        load_fn: Optional[Callable] = None,
+    ):
         self.max_shard_length = max_shard_length
         self.root_dir = Path(root_dir)
         self.shard_dir = self.root_dir / "shards"
-        self.lock_dir = self.root_dir/ "locks"
+        self.lock_dir = self.root_dir / "locks"
         self.scratch_dir = self.root_dir / "scratch"
 
         self.shard_dir.mkdir(parents=True, exist_ok=True)
@@ -95,7 +98,6 @@ class ShardedDataset(AsyncCacheBase):
         self.initialize_timestamps()
         super().__init__(max_size_bytes, load_fn)
 
-
     def initialize_timestamps(self):
         with self.writer_file_lock:
             all_shard_info = self.get_all_shards()
@@ -108,6 +110,7 @@ class ShardedDataset(AsyncCacheBase):
         if not metadata.length_final:
             return None
         return metadata.length
+
     def __len__(self) -> int:
         length = self.length()
         if length is None:
@@ -154,16 +157,15 @@ class ShardedDataset(AsyncCacheBase):
             del self.timestamps[key]
 
     def get_(self, start_idx: int) -> List[Any]:
-        metadata = self.metadata()
         try:
             fp = open(self.get_path_for_key(start_idx), "rb")
         except FileNotFoundError:
             raise KeyError
-            
+
         data = pickle.load(fp)
         fp.close()
         return data
-        
+
     def set_timestamp(self, key: Any, timestamp: int):
         self.timestamps[key] = timestamp
 
@@ -251,9 +253,11 @@ class ShardedDataset(AsyncCacheBase):
                         os.unlink(path)
 
         return final_path
+
     def get_shard_path(self, start: int, data: List[Any]) -> Path:
         end = start + len(data)
         return self.shard_dir / f"{start}.{end}.shard.pickle"
+
     def get_all_shards(self) -> List[ShardInfo]:
         def shard_info_from_path(path):
             stem = path.stem.split(".")
