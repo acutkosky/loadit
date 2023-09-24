@@ -161,30 +161,41 @@ def test_caching(small_cache_loader):
     assert loader.memory_cache._cache_miss_count == expected_memory_miss
     assert loader.shards._cache_miss_count == expected_shard_miss
 
+
 def test_preload(small_cache_loader):
     loader = small_cache_loader
 
     x = small_cache_loader[0]
     # sleep for 1 second to give the next shard time to preload
     time.sleep(1)
-    
+
     x = small_cache_loader[loader.shards.max_shard_length]
 
     assert loader.memory_cache._cache_miss_count == 1
 
+
 def test_uses_multiple_writers(small_cache_loader):
     loader = small_cache_loader
     loader.preload_fn = None
-    x = small_cache_loader[11*loader.shards.max_shard_length]
+    x = small_cache_loader[11 * loader.shards.max_shard_length]
 
-    assert loader.writer_pool.writers[0].current_idx == 12 * loader.shards.max_shard_length -1
-    assert loader.writer_pool.writers[1].current_idx ==  -1
+    assert (
+        loader.writer_pool.writers[0].current_idx
+        == 12 * loader.shards.max_shard_length - 1
+    )
+    assert loader.writer_pool.writers[1].current_idx == -1
 
     x = small_cache_loader[loader.shards.max_shard_length]
 
-    assert loader.writer_pool.writers[0].current_idx == 12 * loader.shards.max_shard_length -1
-    assert loader.writer_pool.writers[1].current_idx ==  2 * loader.shards.max_shard_length -1
-    
+    assert (
+        loader.writer_pool.writers[0].current_idx
+        == 12 * loader.shards.max_shard_length - 1
+    )
+    assert (
+        loader.writer_pool.writers[1].current_idx
+        == 2 * loader.shards.max_shard_length - 1
+    )
+
 
 def test_loader_random_access(loader, it_size, random_indices, verify_sizes):
     for i in range(100):
