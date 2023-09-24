@@ -128,7 +128,8 @@ class WriterPool:
             for writer in self.writers:
                 queue = self.queues[writer]
                 if len(queue) == 0:
-                    gap = start_idx
+                    # this writer's current_idx is correct
+                    gap = max(writer.current_idx, start_idx - writer.current_idx)
                     if gap < smallest_gap:
                         smallest_gap = gap
                         writer_to_append = writer
