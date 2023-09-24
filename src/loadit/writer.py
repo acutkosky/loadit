@@ -195,6 +195,7 @@ class WriterPool:
                 if len(queue) > 0:
                     next_cv = queue[0].cv
         if next_cv:
+            # wake up threads that are waiting for their turn to read data.
             with next_cv:
                 next_cv.notify()
 

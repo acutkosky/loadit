@@ -25,8 +25,13 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-"filelock",
-"watchdog",
+  "filelock ~= 3.12.4",
+  "watchdog ~= 3.0.0",
+]
+[project.optional-dependencies]
+dev = [
+    "pytest ~=7.4.0",
+    "numpy ~=1.26.0",
 ]
 
 [project.urls]
