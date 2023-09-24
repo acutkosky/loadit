@@ -7,7 +7,7 @@
 - [Installation](#installation)
 - [License](#license)
 
-##Usage
+## Usage
 
 ```python
 from loadit import LoadIt
