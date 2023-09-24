@@ -1,6 +1,5 @@
 import loadit
 import pytest
-import loadit
 import time
 import numpy as np
 import pickle
