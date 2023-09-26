@@ -73,28 +73,33 @@ class AsyncCacheBase:
         except KeyError:
             self._cache_miss_count += 1
             self.in_progress_loads[key] += 1
-            value = self._load(key)
+            value = self._load([key])
 
         return value
 
-    def load_async(self, key: Any, executor: ThreadPoolExecutor) -> None:
-        if key not in self and self.in_progress_loads[key] == 0:
-            self.in_progress_loads[key] += 1
-            executor.submit(self._load, key)
+    def load_async(self, keys: List[Any], executor: ThreadPoolExecutor) -> None:
+        keys_to_load = []
+        for key in keys:
+            if key not in self and self.in_progress_loads[key] == 0:
+                self.in_progress_loads[key] += 1
+                keys_to_load.append(key)
+        if len(keys_to_load) > 0:
+            executor.submit(self._load, keys_to_load)
 
     def set_load_fn(self, load_fn: Callable[Any, Any]) -> None:
         self.load_fn = load_fn
 
-    def _load(self, key: Any) -> Any:
-        result = self.load_fn(self, key)
-        # This may be a little race-y: other threads may attempt to increment self.in_progress_loads[key]
-        # and if this assignment to zero is interleaved, they will increment to 1 as opposed to some other value.
-        # However, that is probably acceptable: the important invariant for correctness is that self.in_progress_loads[key]
-        # cannot be non-zero while no _load tasks are in-progress.
-        # If it is zero when _load tasks are in-progress, that just means we might schedule some extra calls to _load.
-        self.in_progress_loads[key] = 0
-        self.set_timestamp(key, time.time())
-        self.evict()
+    def _load(self, keys: List[Any]) -> Any:
+        for key in keys:
+            result = self.load_fn(self, key)
+            # This may be a little race-y: other threads may attempt to increment self.in_progress_loads[key]
+            # and if this assignment to zero is interleaved, they will increment to 1 as opposed to some other value.
+            # However, that is probably acceptable: the important invariant for correctness is that if self.in_progress_loads[key]
+            # then it MUST be the case that there is at least one _load(key) task in-progress.
+            # If it is zero when _load(key) tasks are still in-progress, that just means we might schedule some extra calls to _load.
+            self.in_progress_loads[key] = 0
+            self.set_timestamp(key, time.time())
+            self.evict()
         return result
 
     def get(self, key: Any) -> Any:

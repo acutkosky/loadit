@@ -12,12 +12,21 @@ logger = logging.getLogger("randomacces")
 
 PreloadType = Callable[[Any, int], List[int]]
 
-def preload_next_shard(loader: Any, idx: int) -> List[int]:
-    return [idx + i * loader.shards.max_shard_length for i in range(1, loader.max_workers)]
+
+def preload_next_shard(loader: Any, idx: int) -> Iterable[List[int]]:
+    
+    for i in range(1, loader.max_workers, 2):
+        end = min(i+2, loader.max_workers)
+        yield [
+            idx + j * loader.shards.max_shard_length for j in range(i, end)
+        ]
 
 
-def preload_next_shard_in_indices(indices: List[int], loader: Any, idx: int) -> List[int]:
-    return [indices[max(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]
+def preload_next_shard_in_indices(
+    indices: List[int], loader: Any, idx: int
+) -> Iterable[List[int]]:
+    result = [[indices[min(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]]
+    return result
 
 
 class View:
@@ -58,16 +67,14 @@ class LoadIt:
         memory_limit: Optional[int] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
     ):
-
         if create_it is None:
             max_shard_length = None
 
         if isinstance(max_shard_length, str):
-            assert max_shard_length[-2:].lower() == 'mb'
+            assert max_shard_length[-2:].lower() == "mb"
             length_mb = float(max_shard_length[:-2])
             max_shard_length = int(length_mb * (2**20) / size_estimator(create_it()))
-            
-        
+
         if create_it is not None:
             self.writer_pool = WriterPool(
                 create_it=create_it,
@@ -77,7 +84,7 @@ class LoadIt:
         else:
             self.writer_pool = None
             shard_load_fn = None
-            
+
         self.shards = ShardedDataset(
             max_size_bytes=memory_limit,
             root_dir=root_dir,
@@ -128,15 +135,14 @@ class LoadIt:
         # schedule a preload if enabled
         preload_fn = preload_fn or self.preload_fn
         if self.max_workers > 1 and preload_fn is not None:
-            for n_idx in preload_fn(self, idx):
-                self.load_async(n_idx)
+            for idx_list in preload_fn(self, idx):
+                self.load_async(idx_list)
 
-        # actually fetch the requested data        
+        # actually fetch the requested data
         try:
             shard = self.memory_cache[start_idx]
         except KeyError:
             raise IndexError(f"index {idx} out of range!")
-
 
         return shard[idx - start_idx]
 
@@ -154,11 +160,11 @@ class LoadIt:
             optional_length = self.shards.length()
         return optional_length
 
-    def load_async(self, idx) -> None:
+    def load_async(self, idx_list: List[int]) -> None:
         if self.executor is None:
             return
-        start_idx = self.get_start_idx(idx)
-        self.memory_cache.load_async(start_idx, self.executor)
+        start_idx_list = [self.get_start_idx(idx) for idx in idx_list]
+        self.memory_cache.load_async(start_idx_list, self.executor)
 
     def __iter__(self):
         idx = 0

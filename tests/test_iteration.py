@@ -42,6 +42,10 @@ max_workers = create_fixture("max_workers", [1, 5])
 def verify_sizes(max_shard_length, max_cache_size, memory_limit):
     def verify(loader):
         if memory_limit is not None:
+            if loader.shards.size() > memory_limit:
+                # it's possible that an eviction is in progress: 
+                # give it time to complete.
+                time.sleep(0.1)
             assert loader.shards.size() <= memory_limit
         assert loader.memory_cache.size() <= max_cache_size
 
@@ -287,3 +291,4 @@ def test_slicing(loader, it_size):
 
     for i, x in enumerate(loader[-10 : it_size - 4 : 2]):
         validate_data(x, it_size - 10 + i * 2)
+    assert i == 2
