@@ -18,7 +18,7 @@ def my_iterator():
 
 loader = LoadIt(my_iterator)
 
-# same output as "for x in my_iterator":
+# same output as "for x in my_iterator():"
 for x in loader:
     print(x)
     
@@ -48,7 +48,7 @@ We got you:
 ```python
 loader = LoadIt(
     fn_that_creates_new_iterators,
-    memory_limit=16 * 2**(1000)) # 16 GB cache
+    memory_limit=16 * 2**(30)) # 16 GB cache
 
 # ~ as fast as normal iteration:
 for x in loader:
@@ -91,7 +91,7 @@ class LoadIt
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
-        preload_fn: Optional[Callable[[Self, int], int]] = preload_next_shard,
+        preload_fn: Optional[Callable[[Self, int], Iterable[List[int]]]] = preload_next_shard,
     ):
 ```
 The arguments are:
@@ -106,7 +106,8 @@ Note that this approximation is based on the size of the first 128 iterations, a
 * `max_workers`: This is the number of worker threads that will be spawned to write shards.
 * `memory_limit`: The total size of all shard files stored in `root_dir` will be at most this many bytes.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
-fetches the next `max_workers-1` shards.
+fetches the next `max_workers-1` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
+will go in order over the list and make sure that each index is in memory.
 
 
 ## Installation
