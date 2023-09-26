@@ -30,7 +30,7 @@ def create_fixture(name, values):
     return pytest.fixture(lambda request: request.param, params=values, name=name)
 
 
-load_from_it = create_fixture("load_from_it", None)
+# load_from_it = create_fixture("load_from_it", None)
 it_size = create_fixture("it_size", [100, 2000])
 delay = create_fixture("delay", [0, 0.0001])
 max_shard_length = create_fixture("max_shard_length", [64, 512])
@@ -80,7 +80,6 @@ def small_cache_loader(tmp_path):
     return loader
 
 
-@pytest.fixture
 def nowriter_loader(tmp_path):
     loader = loadit.LoadIt(
         create_it=None,
@@ -109,24 +108,26 @@ def full_save_loader(tmp_path):
 @pytest.fixture
 def loader(
     tmp_path,
-    load_from_it,
+    # load_from_it,
     it_size,
     delay,
     max_shard_length,
     max_cache_size,
     memory_limit,
+    max_workers,
 ):
     create_it_fn = lambda: create_it(it_size, delay)
-    if load_from_it:
-        create_it_arg = create_it_fn()
-    else:
-        create_it_arg = create_it_fn
+    # if load_from_it:
+    #     create_it_arg = create_it_fn()
+    # else:
+    #     create_it_arg = create_it_fn
     loader = loadit.LoadIt(
-        create_it=create_it_arg,
+        create_it=create_it_fn,
         root_dir=tmp_path,
         max_shard_length=max_shard_length,
         max_cache_size=max_cache_size,
         memory_limit=memory_limit,
+        max_workers=max_workers,
     )
 
     yield loader
@@ -136,21 +137,50 @@ def loader(
     loader.shards.observer.join()
 
 
-@pytest.fixture
-def load_from_creator(tmp_path):
-    return loader
+
+# def pytest_generate_tests(metafunc):
+#     if metafunc.function in [
+#         test_loader_random_access,
+#         test_negative_indices,
+#         test_slicing,
+#     ]:
+#         metafunc.parametrize("load_from_it", [False])
+#     elif "load_from_it" in metafunc.fixturenames:
+#         metafunc.parametrize("load_from_it", [True, False])
 
 
-def pytest_generate_tests(metafunc):
-    if metafunc.function in [
-        test_loader_random_access,
-        test_negative_indices,
-        test_slicing,
-    ]:
-        metafunc.parametrize("load_from_it", [False])
-    elif "load_from_it" in metafunc.fixturenames:
-        metafunc.parametrize("load_from_it", [True, False])
+def test_shard_size_mb(tmp_path):
+    create_it = lambda: [np.arange(i,i+128) for i in range(2024)]
+    loader = loadit.LoadIt(
+        create_it=create_it,
+        root_dir=tmp_path,
+        max_shard_length='1mb',
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
 
+    for x in loader:
+        pass
+
+    cached_loader = loadit.LoadIt(
+        create_it=None,
+        root_dir=tmp_path,
+        max_shard_length=None,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    for i, x in enumerate(loader):
+        assert np.array_equal(np.arange(i, i+128), x)
+
+    assert len(loader.shards.get_all_shards()) == 3
+    
+    for p in sorted(loader.shards.get_all_shards(), key=lambda p: p.start)[:-1]:
+        assert p.size <= 2**20
+        assert p.size >= 0.9 * 2**20
+
+    
 
 def test_loader_can_iterate(loader, it_size, verify_sizes):
     for i, x in enumerate(loader):
@@ -203,13 +233,14 @@ def test_preload(small_cache_loader):
     assert loader.memory_cache._cache_miss_count == 2
 
 
-def test_reuse_data(full_save_loader, nowriter_loader):
+def test_reuse_data(full_save_loader, tmp_path):
     # write all the data
     for x in full_save_loader:
         pass
 
+    new_loader = nowriter_loader(tmp_path)
     # read without writers
-    for i, x in enumerate(nowriter_loader):
+    for i, x in enumerate(new_loader):
         validate_data(x, i)
         pass
 

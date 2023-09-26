@@ -1,6 +1,7 @@
 from .sharded_dataset import ShardedDataset
 from .dict_cache import DictCache
 from .writer import WriterPool
+from .util import size_estimator
 from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -49,14 +50,24 @@ class View:
 class LoadIt:
     def __init__(
         self,
-        create_it: Optional[Union[Iterable, Callable[None, Iterable]]],
+        create_it: Optional[Callable[None, Iterable]],
         root_dir: Union[str, Path] = "cache/",
-        max_shard_length: int = 512,
+        max_shard_length: Optional[Union[str, int]] = 512,
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
     ):
+
+        if create_it is None:
+            max_shard_length = None
+
+        if isinstance(max_shard_length, str):
+            assert max_shard_length[-2:].lower() == 'mb'
+            length_mb = float(max_shard_length[:-2])
+            max_shard_length = int(length_mb * (2**20) / size_estimator(create_it()))
+            
+        
         if create_it is not None:
             self.writer_pool = WriterPool(
                 create_it=create_it,

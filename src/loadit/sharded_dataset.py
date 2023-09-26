@@ -32,13 +32,27 @@ Metadata = namedtuple(
 )
 
 
-def is_consistent_metadata(m1, m2):
+def is_consistent_metadata(m1: Metadata, m2: Metadata) -> bool:
     m1 = m1._asdict()
     m2 = m2._asdict()
     for key in ["max_shard_length"]:
+        if m1[key] is None or m2[key] is None:
+            continue
         if m1[key] != m2[key]:
             return False
     return True
+
+
+def merge_metadata(prev: Metadata, m: Metadata) -> Metadata:
+    m = m._asdict()
+    prev = prev._asdict()
+    for k, v in m.items():
+        if v is None:
+            m[k] = prev[k]
+    if prev["length_final"]:
+        m["length_final"] = True
+        m["length"] = prev["length"]
+    return Metadata(**m)
 
 
 class TimestampHandler(PatternMatchingEventHandler):
@@ -74,7 +88,6 @@ class ShardedDataset(AsyncCacheBase):
         self.metadata_path = self.root_dir / "metadata.json"
 
         metadata = Metadata(max_shard_length, 0, False)
-        self.max_shard_length = max_shard_length
         self.writer_file_lock = FileLock(self.lock_dir / "writer_lock.lock")
 
         with self.writer_file_lock:
@@ -84,9 +97,9 @@ class ShardedDataset(AsyncCacheBase):
                 assert is_consistent_metadata(
                     metadata, prev_metadata
                 ), f"requested metadata {metadata} for existing sharded dataset with incompatable metadata {prev_metadata}!"
-            else:
-                with open(self.metadata_path, "w") as fp:
-                    json.dump(metadata._asdict(), fp)
+                metadata = merge_metadata(prev_metadata, metadata)
+        self.write_metadata(metadata)
+        self.max_shard_length = metadata.max_shard_length
 
         self.pattern = "*.*.shard.pickle"
         self.timestamps = {}
@@ -152,9 +165,12 @@ class ShardedDataset(AsyncCacheBase):
 
     def delete(self, key: Any):
         with self.writer_file_lock:
-            path = self.get_path_for_key(key)
-            os.unlink(path)
-            del self.timestamps[key]
+            try:
+                path = self.get_path_for_key(key)
+                os.unlink(path)
+                del self.timestamps[key]
+            except FileNotFoundError:
+                pass
 
     def get_(self, start_idx: int) -> List[Any]:
         try:
@@ -173,9 +189,10 @@ class ShardedDataset(AsyncCacheBase):
         return [k for k, t in sorted(self.timestamps.items(), key=lambda item: item[1])]
 
     def size(self) -> int:
-        usage = 0
-        for path in self.shard_dir.glob(self.pattern):
-            usage += os.path.getsize(path)
+        with self.writer_file_lock:
+            usage = 0
+            for path in self.shard_dir.glob(self.pattern):
+                usage += os.path.getsize(path)
         return usage
 
     def __contains__(self, key: Any) -> bool:
@@ -191,18 +208,18 @@ class ShardedDataset(AsyncCacheBase):
         if len(data) == 0:
             return 0
         # check if this shard already exists
-        prev_shard_info = self.get_shard_info(start)
-
-        assert len(data) <= self.max_shard_length
-
-        if prev_shard_info is not None and prev_shard_info.end >= start + len(data):
-            # this shard already exists and is at least as big as the one
-            # we are trying to write. No need to write anything.
-            return 0
-
-        shard_path = self.get_shard_path(start, data)
-
         with self.writer_file_lock:
+            prev_shard_info = self.get_shard_info(start)
+
+            assert len(data) <= self.max_shard_length
+
+            if prev_shard_info is not None and prev_shard_info.end >= start + len(data):
+                # this shard already exists and is at least as big as the one
+                # we are trying to write. No need to write anything.
+                return 0
+
+            shard_path = self.get_shard_path(start, data)
+
             with open(self.scratch_path, "wb") as temp_shard:
                 pickle.dump(data, temp_shard)
             os.rename(self.scratch_path, shard_path)
@@ -218,17 +235,20 @@ class ShardedDataset(AsyncCacheBase):
         return len(list(self.shard_dir.glob(f"{start_idx}.*.shard.pickle"))) > 0
 
     def get_shard_info(self, idx: int) -> Optional[ShardInfo]:
-        max_shard_len = self.max_shard_length
-        shard_num = idx // max_shard_len
-        start = shard_num * max_shard_len
+        with self.writer_file_lock:
+            max_shard_len = self.max_shard_length
+            shard_num = idx // max_shard_len
+            start = shard_num * max_shard_len
 
-        path = self.cleanup_overlapping_shards(start)
-        if path is None:
-            return None
+            path = self.cleanup_overlapping_shards(start)
+            if path is None:
+                return None
 
-        end = int(path.stem.split(".")[1])
+            end = int(path.stem.split(".")[1])
 
-        return ShardInfo(path=path, start=start, end=end, size=os.path.getsize(path))
+            size = os.path.getsize(path)
+
+            return ShardInfo(path=path, start=start, end=end, size=size)
 
     def cleanup_overlapping_shards(self, start):
         paths = sorted(
@@ -259,13 +279,14 @@ class ShardedDataset(AsyncCacheBase):
         return self.shard_dir / f"{start}.{end}.shard.pickle"
 
     def get_all_shards(self) -> List[ShardInfo]:
-        def shard_info_from_path(path):
-            stem = path.stem.split(".")
-            start = int(stem[0])
-            end = int(stem[1])
-            size = os.path.getsize(path)
-            return ShardInfo(path, start, end, size)
+        with self.writer_file_lock:
+            def shard_info_from_path(path):
+                stem = path.stem.split(".")
+                start = int(stem[0])
+                end = int(stem[1])
+                size = os.path.getsize(path)
+                return ShardInfo(path, start, end, size)
 
-        return [
-            shard_info_from_path(p) for p in self.shard_dir.glob("*.*.shard.pickle")
-        ]
+            return [
+                shard_info_from_path(p) for p in self.shard_dir.glob("*.*.shard.pickle")
+            ]

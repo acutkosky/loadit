@@ -11,22 +11,14 @@ class Writer:
         self,
         create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
     ):
-        if not is_iterator_creator(create_it):
-            assert is_iterator(
-                create_it
-            ), "You must supply either an iteratable, or a function that creates iteratables!"
-            self.it = enumerate(create_it)
-        else:
-            self.it = enumerate(create_it())
+        assert is_iterator_creator(create_it), "you must supply a function that creates iterables!"
+        self.it = enumerate(create_it())
         self.current_idx = -1
         self.finished = False
         self.create_it = create_it
 
     def reset_iterator(self):
         logger.debug("resetting iterator.")
-        assert is_iterator_creator(
-            self.create_it
-        ), "Cannot reset iterator: please provide function create_it() -> Iterator rather than a raw iterator!"
         self.it = enumerate(self.create_it())
 
         self.finished = False
@@ -117,7 +109,7 @@ class WriterPool:
     def __init__(
         self,
         writers: Optional[List[Writer]] = None,
-        create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
+        create_it: Optional[Callable[None, Iterable]] = None,
         num_workers: int = 1,
     ):
         assert exactly_one_not_none(writers, create_it)
@@ -179,6 +171,7 @@ class WriterPool:
         start_idx = queue_item.start_idx
         queue = self.queues[writer]
         next_cv = None
+        # print("trying to get shard: ", start_idx)
         # must get cv before queue_lock
         with queue_item.cv:
             while not queue_item.finished:
