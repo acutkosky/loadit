@@ -170,7 +170,7 @@ class ShardedDataset(AsyncCacheBase):
                 os.unlink(path)
                 del self.timestamps[key]
             except FileNotFoundError:
-                pass
+                raise KeyError
 
     def get_(self, start_idx: int) -> List[Any]:
         try:

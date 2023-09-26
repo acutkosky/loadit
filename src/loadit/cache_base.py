@@ -63,7 +63,11 @@ class AsyncCacheBase:
             return
         while self.size() > self.max_size:
             sorted_keys = self.get_keys_sorted_by_timestamp()
-            self.delete(sorted_keys[0])
+            try:
+                self.delete(sorted_keys[0])
+            except KeyError:
+                # it's ok if someone else has already deleted this.
+                pass
 
     def __getitem__(self, key: Any) -> Any:
         # first try to get the value without explicitly

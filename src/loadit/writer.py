@@ -18,7 +18,6 @@ class Writer:
         self.create_it = create_it
 
     def reset_iterator(self):
-        logger.debug("resetting iterator.")
         self.it = enumerate(self.create_it())
 
         self.finished = False
@@ -121,17 +120,19 @@ class WriterPool:
         # self.queue_cv = Condition()
         self.queues = {writer: [] for writer in self.writers}
 
-    def add_to_queue(self, start_idx: int) -> Optional[Writer]:
+    def add_to_queue(self, start_idx: int, shards: ShardedDataset) -> Optional[Writer]:
         # returns None if the selected writer does not need to be scheduled.
         writer_to_append = None
         smallest_gap = float("inf")
-        # print("adding to queue: ",start_idx)
         with self.queue_lock:
             for writer in self.writers:
                 queue = self.queues[writer]
                 if len(queue) == 0:
                     # this writer's current_idx is correct
-                    gap = max(writer.current_idx, start_idx - writer.current_idx)
+                    if start_idx >= writer.current_idx:
+                        gap = start_idx - writer.current_idx
+                    else:
+                        gap = writer.current_idx
                     if gap < smallest_gap:
                         smallest_gap = gap
                         writer_to_append = writer
@@ -144,14 +145,16 @@ class WriterPool:
                             return queue[i]
                         if queue[i].start_idx > start_idx:
                             queue_item = QueueItem(start_idx, writer)
-                            # print("inserting: ",start_idx," into queue: ",self.writers.index(writer), queue_str(queue), print_wait_counts(self))
                             queue.insert(i, queue_item)
                             return queue_item
 
                 # if the writer will end before start_idx,
                 # then we record how much further it needs to go.
                 # Otherwise, we want to choose the earliest writer.
-                gap = max(queue[-1].start_idx, start_idx - queue[-1].start_idx)
+                if start_idx >= queue[-1].start_idx + shards.max_shard_length:
+                    gap = start_idx - (queue[-1].start_idx + shards.max_shard_length)
+                else:
+                    gap = queue[-1].start_idx + shards.max_shard_length
                 if gap < smallest_gap:
                     smallest_gap = gap
                     writer_to_append = writer
@@ -159,7 +162,6 @@ class WriterPool:
             # no drive-by writing possible, so let's just pick
             # the one with smallest gap
             queue_item = QueueItem(start_idx, writer_to_append)
-            # print("appending: ",start_idx," into queue: ",self.writers.index(writer_to_append))
             self.queues[writer_to_append].append(queue_item)
             return queue_item
 
@@ -171,7 +173,6 @@ class WriterPool:
         start_idx = queue_item.start_idx
         queue = self.queues[writer]
         next_cv = None
-        # print("trying to get shard: ", start_idx)
         # must get cv before queue_lock
         with queue_item.cv:
             while not queue_item.finished:
@@ -197,7 +198,7 @@ class WriterPool:
         return queue_item.result
 
     def load_fn(self, shards: ShardedDataset, start_idx: int) -> List[Any]:
-        queue_item = self.add_to_queue(start_idx)
+        queue_item = self.add_to_queue(start_idx, shards)
         result = self.block_until_write(queue_item, shards)
         return result
 
