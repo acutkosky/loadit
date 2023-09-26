@@ -198,8 +198,17 @@ class ShardedDataset(AsyncCacheBase):
     def __contains__(self, key: Any) -> bool:
         return self.get_path_for_key(key) in self.shard_dir.glob(self.pattern)
 
-    def set_length(self, value: int) -> None:
+    def set_length(self, value: Optional[int] = None) -> None:
+        if value is None:
+            value = self.get_highest_saved_index_plus_one()
         self.set_metadata_entry("length", value)
+
+    def get_highest_saved_index_plus_one(self) -> int:
+        all_shard_info = self.get_all_shards()
+        if len(all_shard_info) == 0:
+            return 0
+        length = max([info.end for info in all_shard_info])
+        return length
 
     def finalize_length(self, value: bool) -> None:
         self.set_metadata_entry("length_final", value)

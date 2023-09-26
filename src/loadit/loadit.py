@@ -150,7 +150,7 @@ class LoadIt:
         optional_length = self.shards.length()
         if optional_length is not None:
             return optional_length
-        guess = 100
+        guess = 1000000
         while optional_length is None:
             try:
                 self[guess]
@@ -165,6 +165,10 @@ class LoadIt:
             return
         start_idx_list = [self.get_start_idx(idx) for idx in idx_list]
         self.memory_cache.load_async(start_idx_list, self.executor)
+
+    def finalize(self) -> None:
+        self.shards.set_length()
+        self.shards.finalize_length(True)
 
     def __iter__(self):
         idx = 0

@@ -248,6 +248,16 @@ def test_reuse_data(full_save_loader, tmp_path):
         validate_data(x, i)
         pass
 
+def test_set_length_from_shards(full_save_loader, tmp_path):
+    full_save_loader.preload_fn = None
+    shard_length = full_save_loader.shards.max_shard_length
+    # write all the data
+    for i in range(16):
+        x = full_save_loader[i]
+    full_save_loader.finalize()
+
+    new_loader = nowriter_loader(tmp_path)
+    assert len(new_loader) == 16
 
 def test_uses_multiple_writers(small_cache_loader):
     loader = small_cache_loader
