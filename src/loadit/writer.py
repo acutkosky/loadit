@@ -11,7 +11,9 @@ class Writer:
         self,
         create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
     ):
-        assert is_iterator_creator(create_it), "you must supply a function that creates iterables!"
+        assert is_iterator_creator(
+            create_it
+        ), "you must supply a function that creates iterables!"
         self.it = enumerate(create_it())
         self.current_idx = -1
         self.finished = False
@@ -201,4 +203,3 @@ class WriterPool:
         queue_item = self.add_to_queue(start_idx, shards)
         result = self.block_until_write(queue_item, shards)
         return result
-

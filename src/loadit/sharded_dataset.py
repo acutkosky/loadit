@@ -289,6 +289,7 @@ class ShardedDataset(AsyncCacheBase):
 
     def get_all_shards(self) -> List[ShardInfo]:
         with self.writer_file_lock:
+
             def shard_info_from_path(path):
                 stem = path.stem.split(".")
                 start = int(stem[0])

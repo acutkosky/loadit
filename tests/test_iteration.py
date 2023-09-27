@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pickle
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 
 def get_array(n):
@@ -35,7 +36,7 @@ it_size = create_fixture("it_size", [100, 2000])
 delay = create_fixture("delay", [0, 0.0001])
 max_shard_length = create_fixture("max_shard_length", [64, 512])
 max_cache_size = create_fixture("max_cache_size", [5, 100])
-max_workers = create_fixture("max_workers", [1, 5])
+max_workers = create_fixture("max_workers", [1, 10])
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def verify_sizes(max_shard_length, max_cache_size, memory_limit):
     def verify(loader):
         if memory_limit is not None:
             if loader.shards.size() > memory_limit:
-                # it's possible that an eviction is in progress: 
+                # it's possible that an eviction is in progress:
                 # give it time to complete.
                 time.sleep(0.1)
             assert loader.shards.size() <= memory_limit
@@ -141,7 +142,6 @@ def loader(
     loader.shards.observer.join()
 
 
-
 # def pytest_generate_tests(metafunc):
 #     if metafunc.function in [
 #         test_loader_random_access,
@@ -154,11 +154,11 @@ def loader(
 
 
 def test_shard_size_mb(tmp_path):
-    create_it = lambda: [np.arange(i,i+128) for i in range(2024)]
+    create_it = lambda: [np.arange(i, i + 128) for i in range(2024)]
     loader = loadit.LoadIt(
         create_it=create_it,
         root_dir=tmp_path,
-        max_shard_length='1mb',
+        max_shard_length="1mb",
         max_cache_size=5,
         max_workers=10,
         memory_limit=None,
@@ -176,15 +176,45 @@ def test_shard_size_mb(tmp_path):
         memory_limit=None,
     )
     for i, x in enumerate(loader):
-        assert np.array_equal(np.arange(i, i+128), x)
+        assert np.array_equal(np.arange(i, i + 128), x)
 
     assert len(loader.shards.get_all_shards()) == 3
-    
+
     for p in sorted(loader.shards.get_all_shards(), key=lambda p: p.start)[:-1]:
         assert p.size <= 2**20
         assert p.size >= 0.9 * 2**20
 
-    
+
+def test_parallel_loaders(tmp_path, delay):
+    create_it_fn = lambda: create_it(2000, delay)
+
+    def make_loader(create_it_fn):
+        loader = loadit.LoadIt(
+            create_it=create_it_fn,
+            root_dir=tmp_path,
+            max_shard_length=16,
+            max_cache_size=32,
+            memory_limit=None,
+            max_workers=10,
+        )
+        return loader
+
+    def iterate():
+        l = make_loader(create_it_fn)
+        for i, x in enumerate(l):
+            validate_data(x, i)
+        l.shards.observer.unschedule_all()
+        l.shards.observer.stop()
+        l.shards.observer.join()
+        return 0
+
+    N = 10
+    executor = ThreadPoolExecutor(max_workers=N)
+    futures = [executor.submit(iterate) for _ in range(N)]
+    for future in futures:
+        r = future.result()
+    executor.shutdown(wait=True)
+
 
 def test_loader_can_iterate(loader, it_size, verify_sizes):
     for i, x in enumerate(loader):
@@ -231,10 +261,10 @@ def test_preload(small_cache_loader):
     time.sleep(1)
     # disable preloading:
     loader.preload_fn = None
-    for i in range(1, loader.max_workers + 1):
+    for i in range(1, loader.max_workers//2 + 2):
         x = small_cache_loader[i * loader.shards.max_shard_length]
 
-    assert loader.memory_cache._cache_miss_count == 2
+    assert loader.memory_cache._cache_miss_count == 3
 
 
 def test_reuse_data(full_save_loader, tmp_path):
@@ -248,6 +278,7 @@ def test_reuse_data(full_save_loader, tmp_path):
         validate_data(x, i)
         pass
 
+
 def test_set_length_from_shards(full_save_loader, tmp_path):
     full_save_loader.preload_fn = None
     shard_length = full_save_loader.shards.max_shard_length
@@ -258,6 +289,7 @@ def test_set_length_from_shards(full_save_loader, tmp_path):
 
     new_loader = nowriter_loader(tmp_path)
     assert len(new_loader) == 16
+
 
 def test_uses_multiple_writers(small_cache_loader):
     loader = small_cache_loader

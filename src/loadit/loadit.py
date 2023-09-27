@@ -14,18 +14,18 @@ PreloadType = Callable[[Any, int], List[int]]
 
 
 def preload_next_shard(loader: Any, idx: int) -> Iterable[List[int]]:
-    
-    for i in range(1, loader.max_workers, 2):
-        end = min(i+2, loader.max_workers)
-        yield [
-            idx + j * loader.shards.max_shard_length for j in range(i, end)
-        ]
+    return [
+        [idx + i * loader.shards.max_shard_length]
+        for i in range(1, loader.max_workers // 2)
+    ]
 
 
 def preload_next_shard_in_indices(
     indices: List[int], loader: Any, idx: int
 ) -> Iterable[List[int]]:
-    result = [[indices[min(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]]
+    result = [
+        [indices[min(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]
+    ]
     return result
 
 
