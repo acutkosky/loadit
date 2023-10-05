@@ -224,6 +224,26 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
             break
     assert i == min(100, it_size - 1)
 
+def test_preload_when_infinite_memory(tmp_path):
+
+    loader = loadit.LoadIt(
+        create_it=lambda : create_it(N=1000),
+        root_dir=tmp_path,
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+        preload_all_async=True
+    )
+    time.sleep(1)
+    shard_cache_misses = loader.shards._cache_miss_count
+
+    for i in range(1000):
+        x = loader[i]
+
+    assert loader.shards._cache_miss_count == shard_cache_misses
+    
+    
 
 def test_caching(small_cache_loader):
     loader = small_cache_loader

@@ -66,6 +66,7 @@ class LoadIt:
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
+        preload_all_async=False
     ):
         if create_it is None:
             max_shard_length = None
@@ -105,6 +106,14 @@ class LoadIt:
         self.memory_cache = DictCache(max_size=max_cache_size, load_fn=load_from_disk)
 
         self.preload_fn = preload_fn
+
+        if preload_all_async:
+            assert self.max_workers > 1
+            if self.shards.length() is None:
+                def iterate_all():
+                    for x in self:
+                        pass
+                self.executor.submit(iterate_all)
 
     def get_start_idx(self, idx: int) -> int:
         shard_offset = idx % self.shards.max_shard_length
