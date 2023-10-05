@@ -287,6 +287,23 @@ class ShardedDataset(AsyncCacheBase):
         end = start + len(data)
         return self.shard_dir / f"{start}.{end}.shard.pickle"
 
+    def all_present(self) -> bool:
+        l = self.length()
+        if l is None:
+            return False
+        all_shards = self.get_all_shards()
+
+        all_shards = sorted(all_shards, key=lambda s: s.start)
+
+        if all_shards[-1].end != l and all_shards[0].start == 0:
+            return False
+
+        for i in range(len(all_shards) - 1):
+            if all_shards[i].end != all_shards[i+1].start:
+                return False
+
+        return True
+
     def get_all_shards(self) -> List[ShardInfo]:
         with self.writer_file_lock:
 

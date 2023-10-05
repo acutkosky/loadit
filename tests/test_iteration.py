@@ -235,11 +235,16 @@ def test_preload_when_infinite_memory(tmp_path):
         memory_limit=None,
         preload_all_async=True
     )
+
+    assert not loader.all_cached_to_disk()
+
     time.sleep(1)
     shard_cache_misses = loader.shards._cache_miss_count
 
     for i in range(1000):
         x = loader[i]
+
+    assert loader.all_cached_to_disk()
 
     assert loader.shards._cache_miss_count == shard_cache_misses
     

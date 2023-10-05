@@ -115,6 +115,9 @@ class LoadIt:
                         pass
                 self.executor.submit(iterate_all)
 
+    def all_cached_to_disk(self) -> bool:
+        return self.shards.all_present()
+
     def get_start_idx(self, idx: int) -> int:
         shard_offset = idx % self.shards.max_shard_length
         start_idx = idx - shard_offset
