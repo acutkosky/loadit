@@ -5,6 +5,7 @@ from .util import size_estimator
 from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 import logging
 
@@ -117,6 +118,13 @@ class LoadIt:
 
     def all_cached_to_disk(self) -> bool:
         return self.shards.all_present()
+
+    def wait_until_all_cached(self):
+        # Warning: this function may wait forever unless there is some
+        # thread that is actively writing all the shards to disk (e.g.
+        # as spawned by providing preload_all_async argument).
+        while not self.all_cached_to_disk():
+            time.sleep(1)
 
     def get_start_idx(self, idx: int) -> int:
         shard_offset = idx % self.shards.max_shard_length
