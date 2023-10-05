@@ -3,9 +3,17 @@
 -----
 
 **Table of Contents**
-- [Usage](#Usage)
-- [Installation](#installation)
 - [License](#license)
+- [Usage](#usage)
+- [Installation](#installation)
+- [Storage Format](#storage-format)
+
+
+## Installation
+
+```console
+pip install git+https://github.com/acutkosky/loadit.git@main
+```
 
 ## Usage
 
@@ -48,7 +56,7 @@ We got you:
 ```python
 loader = LoadIt(
     fn_that_creates_new_iterators,
-    memory_limit=16 * 2**(30)) # 16 GB cache
+    memory_limit=16 * 2**(30)) # 16 GB on-disk cache
 
 # ~ as fast as normal iteration:
 for x in loader:
@@ -60,8 +68,34 @@ print(loader[11030])
 # probably pretty fast (after running the previous line)
 print(loader[11193])
 print(loader[10500])
-
 ```
+
+### What if I want to make sure that my data is cached to disk?
+```python
+loader = LoadIt(
+    lambda : iterate_over_cloud_dataset(bucket),
+    memory_limit = None,
+    max_workers = 2, # needs to be > 1 for preload_all_async=True
+    preload_all_async=True)
+
+# you can access items as usual. All data is being loaded
+# asynchronously
+x = loader[5]
+
+# is the data cached yet?
+if loader.all_cached_to_disk():
+    print("not all cached yet!")
+
+# if you must wait until all the data is on disk:
+loader.wait_until_all_cached()
+
+# Note that the above call will not return until all the data is cached.
+# If you do not allow enough space on disk to cache it all, or if you don't
+# provide  preload_all_async = True, (either in this process, or in some other process)
+# then it will never return. Use with caution!
+```
+
+
 
 
 ### Features
@@ -85,7 +119,7 @@ The `LoadIt` initialization signature is:
 class LoadIt
     def __init__(
         self,
-        create_it: Callable[None, Iterable],
+        create_it: Optional[Callable[None, Iterable]],
         root_dir: Union[str, Path] = "cache/",
         max_shard_length: Union[str,int] = 512,
         max_cache_size: int = 128,
@@ -95,26 +129,67 @@ class LoadIt
     ):
 ```
 The arguments are:
-* `create_it`: this is a function that takes no arguments and returns a new iterable (that is, it is possible to do `for x in create_it():`).
+* `create_it`: this is a function that takes no arguments and returns a new iterable (that is, it is possible to do `for x in create_it():`). If `create_it` is `None`, then we cannot load new iterates from scratch. However, if all of the data has already been cached on disk at `root_dir`, then things will still work fine - we don't need the iterator anymore.
 * `root_dir`: this is where we will stash iterations on the file system. If you instantiate a new `LoadIt` instance
 with the same `root_dir`, then either `create_it` should return the same iterator, or you can set `create_it` to `None`
 and simply use the cached data directly.
 * `max_shard_length`: Each file (a "shard") stored in the `root_dir` directory will contain at most this many iterations.
 You can also specify a string ending in `mb`, such as `32mb`. Then, the size of the shards will be approximately the given number of megabytes.
 Note that this approximation is based on the size of the first 128 iterations, and so may be poor if there is high variation in iteration size.
-* `max_cache_size`: We will keep at most this shards in RAM at once.
+* `max_cache_size`: We will keep at most this shards in main memory (i.e. loaded in from disk) at once.
 * `max_workers`: This is the number of worker threads that will be spawned to write shards.
-* `memory_limit`: The total size of all shard files stored in `root_dir` will be at most this many bytes.
+* `memory_limit`: The total size of all shard files stored on disk in `root_dir` will be at most this many bytes.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
 fetches the next `max_workers-1` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
 will go in order over the list and make sure that each index is in memory.
+* `preload_all_async`: if True, then we will iterate through the iterator in the background and cache all iterations to disk. If False, then we will only iterate to cache iterations that are actually requested (plus a few speculative extra iterations specified by `preload_fn`).
 
 
-## Installation
 
-```console
-pip install git+https://github.com/acutkosky/loadit.git@main
+## Storage format
+
+The goal of the storage format is to store the data to disk in a way that:
+* is very simple.
+* enables reasonably fast access to the ith element.
+* can be quickly appended to.
+* is easily understandable by looking at the directory structure (see first point)
+* is easily modifiable by custom code written "from scratch" without using this module.
+
+
 ```
+root_dir/
+    metadata.json
+    shards/
+        # <start>.<end>.shard.pickle
+        0.30.shard.pickle # first 30 items
+        30.60.shard.pickle # next 30 items
+        60.90.shard.pickle # items 60 - 89
+        ...
+        3030.3050.shard.pickle 
+        # last shard might contain less than 30 items.
+    # the following directories are used when writing or reading the data.
+    # if you want to copy the data somewhere else, it is ok to omit these directories.
+    locks/
+        # contains locking files for synchronization.
+    scratch/
+        # place to store temporary files when writing data.
+```
+
+The file `metadata.json` contains the following object:
+```
+{
+    "max_shard_len": int # max number of entries in each shard. Each shard will store exactly this many items, except possibly the last shard.
+    "length": int # a *lower bound* on the length of the iterator.
+    "length_final": bool # whether "length" is correct.
+}
+```
+Each shard file will be loaded by:
+```python
+with open(f"{start}.{end}.shard.pickle", "rb") as fp:
+    data = pickle.load(fp)
+```
+Then `data` will be a list for which `data[i]` is the `start + i`th element in the iterator.
+
 
 ## License
 
