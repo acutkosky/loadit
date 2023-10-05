@@ -3,11 +3,10 @@
 -----
 
 **Table of Contents**
-- [License](#license)
 - [Usage](#usage)
 - [Installation](#installation)
 - [Storage Format](#storage-format)
-
+- [License](#license)
 
 ## Installation
 
