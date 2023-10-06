@@ -3,15 +3,15 @@
 -----
 
 **Table of Contents**
-- [Usage](#usage)
 - [Installation](#installation)
+- [Usage](#usage)
 - [Storage Format](#storage-format)
 - [License](#license)
 
 ## Installation
 
 ```console
-pip install git+https://github.com/acutkosky/loadit.git@main
+pip install loadit
 ```
 
 ## Usage
@@ -98,9 +98,9 @@ loader.wait_until_all_cached()
 
 
 ### Features
-* Should provide the same user-interface as `loader = list(my_iterator)`.
+* Aims to provide the same user-interface as `loader = list(my_iterator)`.
 * Allows for iterators that do not fit in memory by caching iterations in the file system.
-* Previously cached data can be re-used: if the entire iterator can be cached then you only need the cache.
+* Previously cached data can be re-used: if the entire iterator can be cached, then you only need the cache.
 * If we don't have the disk space to cache all iterations, we'll automatically regenerate iterations on-demand.
 * Safe to use with multithreading or multiprocessing.
 
@@ -133,10 +133,10 @@ The arguments are:
 with the same `root_dir`, then either `create_it` should return the same iterator, or you can set `create_it` to `None`
 and simply use the cached data directly.
 * `max_shard_length`: Each file (a "shard") stored in the `root_dir` directory will contain at most this many iterations.
-You can also specify a string ending in `mb`, such as `32mb`. Then, the size of the shards will be approximately the given number of megabytes.
+You can also specify a string ending in `mb`, such as `32mb`. This will automatically set the length so that the size of the shards will be approximately the given number of megabytes.
 Note that this approximation is based on the size of the first 128 iterations, and so may be poor if there is high variation in iteration size.
 * `max_cache_size`: We will keep at most this shards in main memory (i.e. loaded in from disk) at once.
-* `max_workers`: This is the number of worker threads that will be spawned to write shards.
+* `max_workers`: This is the number of worker threads that will be spawned to write shards. CAUTION: if `max_workers` is >1, then the function `create_it` must be safe to run in multiple threads.
 * `memory_limit`: The total size of all shard files stored on disk in `root_dir` will be at most this many bytes.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
 fetches the next `max_workers-1` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
