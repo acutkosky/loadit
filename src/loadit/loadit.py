@@ -67,7 +67,8 @@ class LoadIt:
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
-        preload_all_async=False
+        compression: Optional[str] = None,
+        preload_all_async=False,
     ):
         if create_it is None:
             max_shard_length = None
@@ -92,6 +93,7 @@ class LoadIt:
             root_dir=root_dir,
             max_shard_length=max_shard_length,
             load_fn=shard_load_fn,
+            compression=compression,
         )
         self.max_workers = max_workers
         if self.max_workers > 1:
@@ -111,9 +113,11 @@ class LoadIt:
         if preload_all_async:
             assert self.max_workers > 1
             if self.shards.length() is None:
+
                 def iterate_all():
                     for x in self:
                         pass
+
                 self.executor.submit(iterate_all)
 
     def all_cached_to_disk(self) -> bool:

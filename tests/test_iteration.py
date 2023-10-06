@@ -224,16 +224,40 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
             break
     assert i == min(100, it_size - 1)
 
-def test_preload_when_infinite_memory(tmp_path):
 
+def test_loader_can_compress(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda : create_it(N=1000),
+        create_it=lambda: create_it(N=1000),
         root_dir=tmp_path,
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
         memory_limit=None,
-        preload_all_async=True
+        preload_all_async=True,
+        compression="zstd",
+    )
+    for i, x in enumerate(loader):
+        validate_data(x, i)
+        if i == 100:
+            break
+
+    try:
+        with open(loader.shards.get_all_shards()[0].path, "rb") as fp:
+            d = pickle.load(fp)
+        assert False, "should not be able to load a compressed file..."
+    except pickle.PickleError:
+        pass
+
+
+def test_preload_when_infinite_memory(tmp_path):
+    loader = loadit.LoadIt(
+        create_it=lambda: create_it(N=1000),
+        root_dir=tmp_path,
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+        preload_all_async=True,
     )
 
     assert not loader.all_cached_to_disk()
@@ -248,8 +272,7 @@ def test_preload_when_infinite_memory(tmp_path):
     assert loader.all_cached_to_disk()
 
     assert loader.shards._cache_miss_count == shard_cache_misses
-    
-    
+
 
 def test_caching(small_cache_loader):
     loader = small_cache_loader
@@ -287,7 +310,7 @@ def test_preload(small_cache_loader):
     time.sleep(1)
     # disable preloading:
     loader.preload_fn = None
-    for i in range(1, loader.max_workers//2 + 2):
+    for i in range(1, loader.max_workers // 2 + 2):
         x = small_cache_loader[i * loader.shards.max_shard_length]
 
     assert loader.memory_cache._cache_miss_count == 3

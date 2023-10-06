@@ -124,6 +124,7 @@ class LoadIt
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
+        compression: Optional[str] = None,
         preload_fn: Optional[Callable[[Self, int], Iterable[List[int]]]] = preload_next_shard,
     ):
 ```
@@ -138,6 +139,7 @@ Note that this approximation is based on the size of the first 128 iterations, a
 * `max_cache_size`: We will keep at most this shards in main memory (i.e. loaded in from disk) at once.
 * `max_workers`: This is the number of worker threads that will be spawned to write shards. CAUTION: if `max_workers` is >1, then the function `create_it` must be safe to run in multiple threads.
 * `memory_limit`: The total size of all shard files stored on disk in `root_dir` will be at most this many bytes.
+* `compression`: You can provide an optional string representing a compression format to use when caching data on disk. Compression uses `fsspec`, so anything in `fsspec.available_compressions()` is valid.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
 fetches the next `max_workers-1` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
 will go in order over the list and make sure that each index is in memory.
@@ -177,9 +179,11 @@ root_dir/
 The file `metadata.json` contains the following object:
 ```
 {
-    "max_shard_len": int # max number of entries in each shard. Each shard will store exactly this many items, except possibly the last shard.
+    "max_shard_length": int # max number of entries in each shard. Each shard will store exactly this many items, except possibly the last shard.
     "length": int # a *lower bound* on the length of the iterator.
+    "compression": Optional[str] # what compression is being used.
     "length_final": bool # whether "length" is correct.
+    "version": int # a version number incremented whenever a breaking change is made.
 }
 ```
 Each shard file will be loaded by:

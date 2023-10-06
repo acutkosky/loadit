@@ -10,32 +10,31 @@ from .cache_base import AsyncCacheBase
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 import logging
+import fsspec
+from typing import NamedTuple
 
 logger = logging.getLogger("loadit")
-ShardInfo = namedtuple(
-    "ShardInfo",
-    [
-        "path",
-        "start",
-        "end",
-        "size",
-    ],
-)
 
-Metadata = namedtuple(
-    "Metadata",
-    [
-        "max_shard_length",
-        "length",
-        "length_final",
-    ],
-)
+
+class ShardInfo(NamedTuple):
+    path: Path
+    start: int
+    end: int
+    size: int
+
+
+class Metadata(NamedTuple):
+    max_shard_length: int
+    length: int
+    length_final: bool
+    compression: Optional[str]
+    version: int
 
 
 def is_consistent_metadata(m1: Metadata, m2: Metadata) -> bool:
     m1 = m1._asdict()
     m2 = m2._asdict()
-    for key in ["max_shard_length"]:
+    for key in ["max_shard_length", "compression", "version"]:
         if m1[key] is None or m2[key] is None:
             continue
         if m1[key] != m2[key]:
@@ -73,6 +72,7 @@ class ShardedDataset(AsyncCacheBase):
         root_dir: str,
         max_shard_length: int = 4096,
         load_fn: Optional[Callable] = None,
+        compression: Optional[str] = None,
     ):
         self.max_shard_length = max_shard_length
         self.root_dir = Path(root_dir)
@@ -87,12 +87,19 @@ class ShardedDataset(AsyncCacheBase):
 
         self.metadata_path = self.root_dir / "metadata.json"
 
-        metadata = Metadata(max_shard_length, 0, False)
+        metadata = Metadata(
+            max_shard_length=max_shard_length,
+            length=0,
+            length_final=False,
+            compression=compression,
+            version=2,
+        )
         self.writer_file_lock = FileLock(self.lock_dir / "writer_lock.lock")
+        self.fs = fsspec.filesystem("file")
 
         with self.writer_file_lock:
             if self.metadata_path.exists():
-                with open(self.metadata_path, "r") as fp:
+                with self.fs.open(self.metadata_path, "r") as fp:
                     prev_metadata = Metadata(**json.load(fp))
                 assert is_consistent_metadata(
                     metadata, prev_metadata
@@ -100,6 +107,11 @@ class ShardedDataset(AsyncCacheBase):
                 metadata = merge_metadata(prev_metadata, metadata)
         self.write_metadata(metadata)
         self.max_shard_length = metadata.max_shard_length
+        self.compression = metadata.compression
+        self.suffix = "shard.pickle"
+        if self.compression is not None:
+            self.suffix += "." + self.compression
+
 
         self.pattern = "*.*.shard.pickle"
         self.timestamps = {}
@@ -132,7 +144,7 @@ class ShardedDataset(AsyncCacheBase):
 
     def metadata(self):
         with self.writer_file_lock:
-            with open(self.metadata_path, "r") as fp:
+            with self.fs.open(self.metadata_path, "r") as fp:
                 metadata_json = json.load(fp)
                 return Metadata(**metadata_json)
 
@@ -141,7 +153,7 @@ class ShardedDataset(AsyncCacheBase):
             metadata = metadata._asdict()
 
         with self.writer_file_lock:
-            with open(self.metadata_path, "w") as fp:
+            with self.fs.open(self.metadata_path, "w") as fp:
                 json.dump(metadata, fp)
 
     def set_metadata_entry(self, key, value):
@@ -155,7 +167,7 @@ class ShardedDataset(AsyncCacheBase):
     def get_path_for_key(self, key):
         assert key % self.max_shard_length == 0, f"non-aligned key: {key}"
         eligible_paths = sorted(
-            self.shard_dir.glob(f"{key}.*.shard.pickle"),
+            self.shard_dir.glob(f"{key}.*.{self.suffix}"),
             key=lambda x: int(x.stem.split(".")[1]),
         )
         if len(eligible_paths) == 0:
@@ -174,12 +186,13 @@ class ShardedDataset(AsyncCacheBase):
 
     def get_(self, start_idx: int) -> List[Any]:
         try:
-            fp = open(self.get_path_for_key(start_idx), "rb")
+            with self.fs.open(
+                self.get_path_for_key(start_idx), "rb", compression=self.compression
+            ) as fp:
+                data = pickle.load(fp)
         except FileNotFoundError:
             raise KeyError
 
-        data = pickle.load(fp)
-        fp.close()
         return data
 
     def set_timestamp(self, key: Any, timestamp: int):
@@ -229,7 +242,7 @@ class ShardedDataset(AsyncCacheBase):
 
             shard_path = self.get_shard_path(start, data)
 
-            with open(self.scratch_path, "wb") as temp_shard:
+            with self.fs.open(self.scratch_path, "wb", compression=self.compression) as temp_shard:
                 pickle.dump(data, temp_shard)
             os.rename(self.scratch_path, shard_path)
             if len(data) < self.max_shard_length:
@@ -241,7 +254,7 @@ class ShardedDataset(AsyncCacheBase):
         return len(data)
 
     def shard_exists(self, start_idx: int) -> bool:
-        return len(list(self.shard_dir.glob(f"{start_idx}.*.shard.pickle"))) > 0
+        return len(list(self.shard_dir.glob(f"{start_idx}.*.{self.suffix}"))) > 0
 
     def get_shard_info(self, idx: int) -> Optional[ShardInfo]:
         with self.writer_file_lock:
@@ -261,7 +274,7 @@ class ShardedDataset(AsyncCacheBase):
 
     def cleanup_overlapping_shards(self, start):
         paths = sorted(
-            self.shard_dir.glob(f"{start}.*.shard.pickle"),
+            self.shard_dir.glob(f"{start}.*.{self.suffix}"),
             key=lambda x: int(x.stem.split(".")[1]),
         )
         if len(paths) == 0:
@@ -271,7 +284,7 @@ class ShardedDataset(AsyncCacheBase):
             with self.writer_file_lock:
                 # grab the paths again in case someone else has just added more...
                 paths = sorted(
-                    self.shard_dir.glob(f"{start}.*.shard.pickle"),
+                    self.shard_dir.glob(f"{start}.*.{self.suffix}"),
                     key=lambda x: int(x.stem.split(".")[1]),
                 )
                 if len(paths) == 0:
@@ -285,7 +298,7 @@ class ShardedDataset(AsyncCacheBase):
 
     def get_shard_path(self, start: int, data: List[Any]) -> Path:
         end = start + len(data)
-        return self.shard_dir / f"{start}.{end}.shard.pickle"
+        return self.shard_dir / f"{start}.{end}.{self.suffix}"
 
     def all_present(self) -> bool:
         l = self.length()
@@ -299,7 +312,7 @@ class ShardedDataset(AsyncCacheBase):
             return False
 
         for i in range(len(all_shards) - 1):
-            if all_shards[i].end != all_shards[i+1].start:
+            if all_shards[i].end != all_shards[i + 1].start:
                 return False
 
         return True
@@ -315,5 +328,6 @@ class ShardedDataset(AsyncCacheBase):
                 return ShardInfo(path, start, end, size)
 
             return [
-                shard_info_from_path(p) for p in self.shard_dir.glob("*.*.shard.pickle")
+                shard_info_from_path(p)
+                for p in self.shard_dir.glob(f"*.*.{self.suffix}")
             ]
