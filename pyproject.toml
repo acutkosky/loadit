@@ -5,10 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "loadit"
 dynamic = ["version"]
-description = ""
+description = "Easily convert iterables over large datasets into random access."
 readme = "README.md"
 requires-python = ">=3.7"
-license = "Apache-2.0"
+license = "MIT"
 keywords = []
 authors = [
   { name = "Ashok Cutkosky", email = "ashok@cutkosky.com" },
