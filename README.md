@@ -23,7 +23,7 @@ def my_iterator():
     ...
     yield item
 
-loader = LoadIt(my_iterator)
+loader = LoadIt(my_iterator, root_dir="cache/")
 
 # same output as "for x in my_iterator():"
 for x in loader:
@@ -40,7 +40,7 @@ for i in [2,4,9,10,32,4,6]:
 # this might be slow to start, because we have to
 # calculate the length (and if the iterator never terminates
 # then it will wait forever):
-loader = LoadIt(another_iterator)
+loader = LoadIt(another_iterator, root_dir="cache/")
 for i in range(len(loader)):
     print(loader[i])
 
@@ -55,6 +55,7 @@ We got you:
 ```python
 loader = LoadIt(
     fn_that_creates_new_iterators,
+    root_dir="cache/",
     memory_limit=16 * 2**(30)) # 16 GB on-disk cache
 
 # ~ as fast as normal iteration:
@@ -73,6 +74,7 @@ print(loader[10500])
 ```python
 loader = LoadIt(
     lambda : iterate_over_cloud_dataset(bucket),
+    root_dir = "cache/"
     memory_limit = None,
     max_workers = 2, # needs to be > 1 for preload_all_async=True
     preload_all_async=True)
@@ -119,8 +121,8 @@ class LoadIt
     def __init__(
         self,
         create_it: Optional[Callable[None, Iterable]],
-        root_dir: Union[str, Path] = "cache/",
-        max_shard_length: Union[str,int] = 512,
+        root_dir: Union[str, Path],
+        max_shard_length: Union[str,int] = "64mb",
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
