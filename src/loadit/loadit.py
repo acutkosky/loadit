@@ -1,4 +1,4 @@
-from .sharded_dataset import ShardedDataset
+from .sharded_dataset import ShardedDataset, dataset_metadata
 from .dict_cache import DictCache
 from .writer import WriterPool
 from .util import size_estimator
@@ -6,10 +6,11 @@ from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
+import re
 
 import logging
 
-logger = logging.getLogger("randomacces")
+logger = logging.getLogger(__name__)
 
 PreloadType = Callable[[Any, int], List[int]]
 
@@ -62,7 +63,7 @@ class LoadIt:
         self,
         create_it: Optional[Callable[None, Iterable]],
         root_dir: Union[str, Path] = "cache/",
-        max_shard_length: Optional[Union[str, int]] = 512,
+        max_shard_length: Optional[Union[str, int]] = '64mb',
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
@@ -74,9 +75,18 @@ class LoadIt:
             max_shard_length = None
 
         if isinstance(max_shard_length, str):
-            assert max_shard_length[-2:].lower() == "mb"
-            length_mb = float(max_shard_length[:-2])
-            max_shard_length = int(length_mb * (2**20) / size_estimator(create_it()))
+            match = re.fullmatch("([0-9]+)mb", max_shard_length.lower())
+            if not match:
+                raise ValueError("Invalid max_shard_length! Must be an integer or match ([0-9]+)mb.")
+            length_mb = float(match.group(1))
+
+
+            metadata = dataset_metadata(root_dir)
+            if metadata is None:
+                max_shard_length = int(length_mb * (2**20) / size_estimator(create_it(), compression=compression))
+            else:
+                max_shard_length = metadata.max_shard_length
+                logger.warn("User-specified max_shard_length in mb for an already-existing ShardedDataset! Ignoring user specification")
 
         if create_it is not None:
             self.writer_pool = WriterPool(

@@ -4,14 +4,13 @@ import time
 from pathlib import Path
 import json
 from collections import namedtuple
-from typing import Any, List, Optional, Callable
+from typing import Any, List, Optional, Callable, NamedTuple, Dict
 from filelock import FileLock
 from .cache_base import AsyncCacheBase
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 import logging
 import fsspec
-from typing import NamedTuple
 
 logger = logging.getLogger("loadit")
 
@@ -41,6 +40,12 @@ def is_consistent_metadata(m1: Metadata, m2: Metadata) -> bool:
             return False
     return True
 
+def assert_valid_metadata(m: Metadata) -> bool:
+    assert m.max_shard_length > 0
+    assert m.length >= 0
+    assert isinstance(m.length_final, bool)
+    assert m.compression is None or m.compression in fsspec.available_compressions()
+    
 
 def merge_metadata(prev: Metadata, m: Metadata) -> Metadata:
     m = m._asdict()
@@ -64,6 +69,18 @@ class TimestampHandler(PatternMatchingEventHandler):
         key = self.file_cache.get_key(path)
         self.file_cache.set_timestamp(key, time.time())
 
+def dataset_metadata(root_dir: str):
+    metadata_path = Path(root_dir) / "metadata.json"
+    file_lock = Path(root_dir) / "locks" / "writer_lock.lock"
+    if not metadata_path.exists() or not file_lock.exists():
+        return None
+
+    flock = FileLock(file_lock)
+    with flock:
+        with open(metadata_path, "r") as fp:
+            metadata = Metadata(**json.load(fp))
+
+    return metadata
 
 class ShardedDataset(AsyncCacheBase):
     def __init__(
@@ -73,6 +90,7 @@ class ShardedDataset(AsyncCacheBase):
         max_shard_length: int = 4096,
         load_fn: Optional[Callable] = None,
         compression: Optional[str] = None,
+        info: Optional[Dict[str, Any]] = None,
     ):
         self.max_shard_length = max_shard_length
         self.root_dir = Path(root_dir)
@@ -106,6 +124,8 @@ class ShardedDataset(AsyncCacheBase):
                 ), f"requested metadata {metadata} for existing sharded dataset with incompatable metadata {prev_metadata}!"
                 metadata = merge_metadata(prev_metadata, metadata)
         self.write_metadata(metadata)
+        assert_valid_metadata(metadata)
+
         self.max_shard_length = metadata.max_shard_length
         self.compression = metadata.compression
         self.suffix = "shard.pickle"

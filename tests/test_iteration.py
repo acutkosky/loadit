@@ -113,7 +113,6 @@ def full_save_loader(tmp_path):
 @pytest.fixture
 def loader(
     tmp_path,
-    # load_from_it,
     it_size,
     delay,
     max_shard_length,
@@ -122,10 +121,6 @@ def loader(
     max_workers,
 ):
     create_it_fn = lambda: create_it(it_size, delay)
-    # if load_from_it:
-    #     create_it_arg = create_it_fn()
-    # else:
-    #     create_it_arg = create_it_fn
     loader = loadit.LoadIt(
         create_it=create_it_fn,
         root_dir=tmp_path,
@@ -140,17 +135,6 @@ def loader(
     loader.shards.observer.unschedule_all()
     loader.shards.observer.stop()
     loader.shards.observer.join()
-
-
-# def pytest_generate_tests(metafunc):
-#     if metafunc.function in [
-#         test_loader_random_access,
-#         test_negative_indices,
-#         test_slicing,
-#     ]:
-#         metafunc.parametrize("load_from_it", [False])
-#     elif "load_from_it" in metafunc.fixturenames:
-#         metafunc.parametrize("load_from_it", [True, False])
 
 
 def test_shard_size_mb(tmp_path):
