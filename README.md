@@ -138,6 +138,7 @@ shuffled = chunk_shuffle(seq, chunk_size=128, length=1024)
 * The ordering of the iterator must be deterministic.
 * If your iterator is small, then you're definitely going to be better off with `loader = list(my_iterator)`. This module is for LARGE iterators.
 * If you are just going to be making in-order linear passes over the data, it is definitely going to be faster and simpler to just do `for x in my_iterator:`. This is for workloads that involve jumping around in the indices a bit.
+* The default settings store data in "shard" files of about 64 MB and cache at most 128 such shards in a dictionary. On some systems this might exceed available memory. In this case, you should adjust one or both settings to reduce memory usage.
 
 ### Detailed Options
 
