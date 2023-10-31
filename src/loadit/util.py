@@ -75,7 +75,7 @@ class SequenceView(Sequence):
 
 
 class InterleaveSequences(Sequence):
-    def __init__(self, seqs: List[Sequence]):
+    def __init__(self, *seqs: List[Sequence]):
         self.seqs = seqs
         self.lengths = [len(seq) for seq in seqs]
         self.len = sum(self.lengths)
@@ -143,14 +143,18 @@ class ConcatableSequence(Sequence):
         return ConcatableSequence(self.seqs + [other])
 
 
-class CircularSequence(Sequence):
-    def __init__(self, seq: Sequence):
+class RepeatSequence(Sequence):
+    def __init__(self, seq: Sequence, repeats: Optional[int]=None):
         self.seq = seq
+        self.repeats = repeats
 
     def __getitem__(self, idx):
         try:
             return self.seq[idx]
         except IndexError:
+            if self.repeats is not None:
+                if idx // len(self.seq) >= self.repeats:
+                    raise IndexError
             idx = idx % len(self.seq)
             return self.seq[idx]
 

@@ -395,6 +395,26 @@ def test_shuffle(loader, it_size):
         seen_indices.add(idx)
 
 
+def test_repeat(tmp_path):
+    loader1 = loadit.LoadIt(
+        create_it=lambda: create_it(N=100),
+        root_dir=os.path.join(tmp_path, "l1"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+
+    repeat3 = loadit.RepeatSequence(loader1, 3)
+    assert repeat3[130]["index"] == 30
+    assert repeat3[299]["index"] == 99
+
+    try:
+        _ = repeat3[300]
+    except IndexError:
+        pass
+
+
 def test_interleave(tmp_path):
     loader1 = loadit.LoadIt(
         create_it=lambda: create_it(N=100),
@@ -438,7 +458,7 @@ def test_interleave(tmp_path):
     )
 
     interleave = loadit.InterleaveSequences(
-        [
+        *[
             loader1,
             loader2,
             loader3,

@@ -11,7 +11,7 @@ from .util import (
     size_estimator,
     ConcatableSequence,
     SequenceView,
-    CircularSequence,
+    RepeatSequence,
     InterleaveSequences,
     chunk_shuffle_idx,
     chunk_shuffle,
