@@ -96,8 +96,33 @@ loader.wait_until_all_cached()
 # then it will never return. Use with caution!
 ```
 
+## Other goodies
+The following utilities operate on any python objects that have a  `len` and a `__getitem__`:
+```python
+view = loadit.SequenceView(a, [2,3,1,2,3,5,7,8,9,9,1])
+assert view[1] == a[3]
 
+new_view = view[lambda idx: -idx]
+assert new_view[1] == a[9]
 
+newer_view = new_view[0,3,4]
+assert newer_view[1] == a[8]
+
+a_b_c = loadit.ConcatableSequence(a,b) + loadit.ConcatableSequence(b)
+# a_b_c is equivalent to a + b + c if a,b,c were all lists.
+# like itertools.chain, but for random access.
+
+a_b_c = loadit.InterleaveSequence(a,b,c)
+# a_b_c will interleave a, b, c in round-robin fashion.
+
+repeat = loadit.RepeatSequence(a, repeats=3)
+# like itertools.repeat. repeats=None will repeat infinitely
+
+shuffled = chunk_shuffle(seq, chunk_size=128, length=1024)
+# bins indices into groups of 128 and returns a view of the
+# first 1024 elements of seq that is shuffled within each bin.
+# if chunk_size of length is unspecified, they default to len(seq).
+```
 
 ### Features
 * Aims to provide the same user-interface as `loader = list(my_iterator)`.
@@ -105,6 +130,7 @@ loader.wait_until_all_cached()
 * Previously cached data can be re-used: if the entire iterator can be cached, then you only need the cache.
 * If we don't have the disk space to cache all iterations, we'll automatically regenerate iterations on-demand.
 * Safe to use with multithreading or multiprocessing.
+* Also provides some helpful utilities for manipulating list-like objects.
 
 
 ### Restrictions/Caveats
@@ -128,6 +154,7 @@ class LoadIt
         memory_limit: Optional[int] = None,
         compression: Optional[str] = None,
         preload_fn: Optional[Callable[[Self, int], Iterable[List[int]]]] = preload_next_shard,
+        preload_all_async: False,
     ):
 ```
 The arguments are:
@@ -143,7 +170,7 @@ Note that this approximation is based on the size of the first 128 iterations, a
 * `memory_limit`: The total size of all shard files stored on disk in `root_dir` will be at most this many bytes.
 * `compression`: You can provide an optional string representing a compression format to use when caching data on disk. Compression uses `fsspec`, so anything in `fsspec.available_compressions()` is valid.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
-fetches the next `max_workers-1` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
+fetches the next `max_workers/2` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
 will go in order over the list and make sure that each index is in memory.
 * `preload_all_async`: if True, then we will iterate through the iterator in the background and cache all iterations to disk. If False, then we will only iterate to cache iterations that are actually requested (plus a few speculative extra iterations specified by `preload_fn`).
 
