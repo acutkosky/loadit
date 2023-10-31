@@ -65,7 +65,6 @@ class LoaditView(SequenceView):
         return len(self.indices)
 
 
-
 class LoadIt(SequenceView):
     def __init__(
         self,
@@ -222,4 +221,3 @@ class LoadIt(SequenceView):
     def finalize(self) -> None:
         self.shards.set_length()
         self.shards.finalize_length(True)
-

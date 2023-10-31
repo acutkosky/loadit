@@ -40,12 +40,13 @@ def is_consistent_metadata(m1: Metadata, m2: Metadata) -> bool:
             return False
     return True
 
+
 def assert_valid_metadata(m: Metadata) -> bool:
     assert m.max_shard_length > 0
     assert m.length >= 0
     assert isinstance(m.length_final, bool)
     assert m.compression is None or m.compression in fsspec.available_compressions()
-    
+
 
 def merge_metadata(prev: Metadata, m: Metadata) -> Metadata:
     m = m._asdict()
@@ -69,6 +70,7 @@ class TimestampHandler(PatternMatchingEventHandler):
         key = self.file_cache.get_key(path)
         self.file_cache.set_timestamp(key, time.time())
 
+
 def dataset_metadata(root_dir: str):
     metadata_path = Path(root_dir) / "metadata.json"
     file_lock = Path(root_dir) / "locks" / "writer_lock.lock"
@@ -81,6 +83,7 @@ def dataset_metadata(root_dir: str):
             metadata = Metadata(**json.load(fp))
 
     return metadata
+
 
 class ShardedDataset(AsyncCacheBase):
     def __init__(
@@ -131,7 +134,6 @@ class ShardedDataset(AsyncCacheBase):
         self.suffix = "shard.pickle"
         if self.compression is not None:
             self.suffix += "." + self.compression
-
 
         self.pattern = "*.*.shard.pickle"
         self.timestamps = {}
@@ -263,7 +265,9 @@ class ShardedDataset(AsyncCacheBase):
 
             shard_path = self.get_shard_path(start, data)
 
-            with self.fs.open(self.scratch_path, "wb", compression=self.compression) as temp_shard:
+            with self.fs.open(
+                self.scratch_path, "wb", compression=self.compression
+            ) as temp_shard:
                 pickle.dump(data, temp_shard)
             os.rename(self.scratch_path, shard_path)
             if len(data) < self.max_shard_length:

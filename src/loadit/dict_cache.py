@@ -5,7 +5,12 @@ from typing import Optional, Callable, Any, List
 
 
 class DictCache(AsyncCacheBase):
-    def __init__(self, max_size: Optional[int], load_fn: Optional[Callable] = None, size_mode='count'):
+    def __init__(
+        self,
+        max_size: Optional[int],
+        load_fn: Optional[Callable] = None,
+        size_mode="count",
+    ):
         self.cache = {}
         self.timestamps = {}
         self.size_mode = size_mode
@@ -20,7 +25,7 @@ class DictCache(AsyncCacheBase):
         # For now we'll just ignore this. It's a potential memory leak, but hopefully not that signifanct.
         del self.cache[key]
         del self.timestamps[key]
-       
+
     def get_(self, key: Any) -> Any:
         return self.cache[key]
 
@@ -28,7 +33,10 @@ class DictCache(AsyncCacheBase):
         self.timestamps[key] = timestamp
 
     def get_keys_sorted_by_timestamp(self) -> List[Any]:
-        return [k for k in sorted(self.cache.keys(), key=lambda k: self.timestamps.get(k, 0))]
+        return [
+            k
+            for k in sorted(self.cache.keys(), key=lambda k: self.timestamps.get(k, 0))
+        ]
 
     def size(self) -> int:
         return len(self.cache)

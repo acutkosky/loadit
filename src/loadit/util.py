@@ -11,13 +11,14 @@ import numpy as np
 
 
 def is_sequence(s):
-    seq_attrs = ['__getitem__', '__len__', '__iter__']
+    seq_attrs = ["__getitem__", "__len__", "__iter__"]
     for at in seq_attrs:
         if not hasattr(s, at):
             return False
     return True
 
-def size_estimator(it: Iterable, num_samples: int = 16, compression = None) -> int:
+
+def size_estimator(it: Iterable, num_samples: int = 16, compression=None) -> int:
     buffer = []
     for count, x in enumerate(it):
         buffer.append(x)
@@ -29,23 +30,26 @@ def size_estimator(it: Iterable, num_samples: int = 16, compression = None) -> i
     os.close(fd)
     size = os.path.getsize(name)
     os.unlink(name)
-    return size/count
-
+    return size / count
 
 
 def deep_getsizeof(*obs, seen_ids=set()):
     children = []
-    for o in obs: 
-        for iter_fn in ['__iter__', 'values']:
+    for o in obs:
+        for iter_fn in ["__iter__", "values"]:
             if hasattr(o, iter_fn):
-                new_children = [c for c in getattr(o, iter_fn)() if id(c) not in seen_ids]
+                new_children = [
+                    c for c in getattr(o, iter_fn)() if id(c) not in seen_ids
+                ]
                 seen_ids.extend([id(c) for c in new_children])
                 children.extend(new_children)
     return sum([sys.getsizeof(o) for o in obs]) + deep_getsizeof(*children, seen_ids)
 
 
 class SequenceView(Sequence):
-    def __init__(self, seq: Sequence, indices: Optional[Union[Sequence, Callable]] = None):
+    def __init__(
+        self, seq: Sequence, indices: Optional[Union[Sequence, Callable]] = None
+    ):
         self.seq = seq
         self.indices = indices
         if is_sequence(indices):
@@ -70,10 +74,49 @@ class SequenceView(Sequence):
             return len(self.indices)
 
 
+class InterleaveSequences(Sequence):
+    def __init__(self, seqs: List[Sequence]):
+        self.seqs = seqs
+        self.lengths = [len(seq) for seq in seqs]
+        self.len = sum(self.lengths)
+
+        self.cutoffs = []
+        self.offsets = []
+        self.seq_indices = [list(range(len(seqs)))]
+
+        temp_lengths = list(self.lengths)
+        cum_sum = 0
+        offset = 0
+        while len(temp_lengths) > 0:
+            min_value = min(temp_lengths)
+            self.offsets.append(offset)
+            self.cutoffs.append(cum_sum + min_value * len(temp_lengths))
+            offset += min_value
+            cum_sum += min_value * len(temp_lengths)
+            temp_lengths = [x for x in temp_lengths if x != min_value]
+            self.seq_indices.append(
+                [i for i, l in enumerate(self.lengths) if l > min_value]
+            )
+
+    def __getitem__(self, idx: int):
+        for c, offset in zip(self.cutoffs, self.offsets):
+            if idx < c:
+                idx = idx - c
+                current_indices = self.seq_indices[idx]
+                seq_idx = idx % len(current_indices)
+                seq_offset = idx // len(current_indices)
+                return self.seqs[current_indices[seq_idx]][seq_offset + offset]
+
+        raise IndexError
+
+    def __len__(self):
+        return self.len
+
+
 class ConcatableSequence(Sequence):
     def __init__(self, *seqs: List[Sequence]):
         self.seqs = seqs
-        self.lengths = [float('inf') for s in seqs]
+        self.lengths = [float("inf") for s in seqs]
 
     def __getitem__(self, idx: int):
         # we go to great lengths to avoid computing len(self.seqs[i]) for any i
@@ -96,7 +139,6 @@ class ConcatableSequence(Sequence):
         self.lengths = [len(seq) for seq in self.seqs]
         return sum(self.lengths)
 
-
     def __add__(self, other: Sequence):
         return ConcatableSequence(self.seqs + [other])
 
@@ -111,20 +153,28 @@ class CircularSequence(Sequence):
         except IndexError:
             idx = idx % len(self.seq)
             return self.seq[idx]
+
     def __len__(self):
         return len(self.seq)
 
 
-def chunk_shuffle_idx(chunk_size: int, length: int, seed: Optional=None):
-    num_chunks = (chunk_size + length - 1 ) // chunk_size
+def chunk_shuffle_idx(chunk_size: int, length: int, seed: Optional = None):
+    num_chunks = (chunk_size + length - 1) // chunk_size
 
     rng = np.random.default_rng(seed)
 
-    permutations = np.concatenate([i*chunk_size + rng.permutation(chunk_size) for i in range(num_chunks)])
+    permutations = np.concatenate(
+        [i * chunk_size + rng.permutation(chunk_size) for i in range(num_chunks)]
+    )
     return permutations
 
 
-def chunk_shuffle(seq: Sequence, chunk_size: Optional[int], length: Optional[int], seed: Optional=None):
+def chunk_shuffle(
+    seq: Sequence,
+    chunk_size: Optional[int],
+    length: Optional[int],
+    seed: Optional = None,
+):
     if length is None:
         length = len(seq)
 

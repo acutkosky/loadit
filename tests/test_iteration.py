@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pickle
 import random
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -372,15 +373,16 @@ def test_slicing(loader, it_size):
 
 
 def test_view(loader, it_size):
-    indices1 = [2,4,5,9]
-    indices2 = [2,3]
-    for i, x in enumerate(loader[indices1][2,3]):
+    indices1 = [2, 4, 5, 9]
+    indices2 = [2, 3]
+    for i, x in enumerate(loader[indices1][2, 3]):
         validate_data(x, indices1[indices2[i]])
 
 
 def test_concat(loader, it_size):
-    concat  = loadit.ConcatableSequence(loader,loader[3,4])
+    concat = loadit.ConcatableSequence(loader, loader[3, 4])
     validate_data(concat[it_size + 1], 4)
+
 
 def test_shuffle(loader, it_size):
     chunk_size = 70
@@ -393,3 +395,74 @@ def test_shuffle(loader, it_size):
         seen_indices.add(idx)
 
 
+def test_interleave(tmp_path):
+    loader1 = loadit.LoadIt(
+        create_it=lambda: create_it(N=100),
+        root_dir=os.path.join(tmp_path, "l1"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    loader2 = loadit.LoadIt(
+        create_it=lambda: create_it(N=10),
+        root_dir=os.path.join(tmp_path, "l2"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    loader3 = loadit.LoadIt(
+        create_it=lambda: create_it(N=100),
+        root_dir=os.path.join(tmp_path, "l3"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    loader4 = loadit.LoadIt(
+        create_it=lambda: create_it(N=10),
+        root_dir=os.path.join(tmp_path, "l4"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+    loader5 = loadit.LoadIt(
+        create_it=lambda: create_it(N=22),
+        root_dir=os.path.join(tmp_path, "l5"),
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=10,
+        memory_limit=None,
+    )
+
+    interleave = loadit.InterleaveSequences(
+        [
+            loader1,
+            loader2,
+            loader3,
+            loader4,
+            loader5,
+        ]
+    )
+
+    test_lists = [
+        list(range(100)),
+        list(range(10)),
+        list(range(100)),
+        list(range(10)),
+        list(range(22)),
+    ]
+
+    idx = 0
+
+    for x in interleave:
+        check_value = test_lists[idx].pop(0)
+        if len(test_lists[idx]) == 0:
+            test_lists.pop(idx)
+        else:
+            idx += 1
+        idx = idx % len(test_lists)
+
+        assert x["index"] == check_value

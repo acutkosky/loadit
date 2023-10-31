@@ -12,6 +12,7 @@ from .util import (
     ConcatableSequence,
     SequenceView,
     CircularSequence,
+    InterleaveSequences,
     chunk_shuffle_idx,
     chunk_shuffle,
 )
