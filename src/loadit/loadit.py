@@ -74,8 +74,8 @@ class LoadIt(SequenceView):
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
-        preload_fn: Optional[PreloadType] = preload_next_shard,
         compression: Optional[str] = None,
+        preload_fn: Optional[PreloadType] = preload_next_shard,
         preload_all_async=False,
     ):
         if create_it is None:
