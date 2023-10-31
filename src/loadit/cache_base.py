@@ -98,8 +98,11 @@ class AsyncCacheBase:
             result = self.load_fn(self, key)
             # This may be a little race-y: other threads may attempt to increment self.in_progress_loads[key]
             # and if this assignment to zero is interleaved, they will increment to 1 as opposed to some other value.
-            # However, that is probably acceptable: the important invariant for correctness is that if self.in_progress_loads[key]
-            # then it MUST be the case that there is at least one _load(key) task in-progress.
+            # Alternatively, the assignment to zero might happen right after the increment so that in_progress_loads is 0
+            # even when a load is just being started.
+            # However, this is probably acceptable: the important invariant for correctness is that if self.in_progress_loads[key]
+            # then it MUST be the case that there is at least one _load(key) task in-progress. It is not important that the numbers actually
+            # match.
             # If it is zero when _load(key) tasks are still in-progress, that just means we might schedule some extra calls to _load.
             self.in_progress_loads[key] = 0
             self.set_timestamp(key, time.time())

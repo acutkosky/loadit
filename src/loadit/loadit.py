@@ -1,16 +1,17 @@
 from .sharded_dataset import ShardedDataset, dataset_metadata
 from .dict_cache import DictCache
 from .writer import WriterPool
-from .util import size_estimator
+from .util import size_estimator, SequenceView
 from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
 import re
+from collections.abc import Sequence
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("loadit")
 
 PreloadType = Callable[[Any, int], List[int]]
 
@@ -23,16 +24,27 @@ def preload_next_shard(loader: Any, idx: int) -> Iterable[List[int]]:
 
 
 def preload_next_shard_in_indices(
-    indices: List[int], loader: Any, idx: int
+    indices: List[int], loader: Any, idx: int, num_to_preload: Optional[int] = None
 ) -> Iterable[List[int]]:
-    result = [
-        [indices[min(len(indices) - 1, idx + 1)] + loader.shards.max_shard_length]
-    ]
+    if num_to_preload is None:
+        num_to_preload = loader.max_workers // 2
+    next_indices = list(
+        set(
+            [
+                loader.get_start_idx(
+                    indices[min(len(indices) - 1, idx + i)]
+                    + loader.shards.max_shard_length
+                )
+                for i in range(1, num_to_preload)
+            ]
+        )
+    )
+    result = [[idx] for idx in next_indices]
     return result
 
 
-class View:
-    def __init__(self, loader, indices):
+class LoaditView(SequenceView):
+    def __init__(self, loader, indices: SequenceView):
         self.loader = loader
         self.indices = indices
         self.preload_fn = lambda loader, idx: preload_next_shard_in_indices(
@@ -41,29 +53,23 @@ class View:
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
-            return View(self.loader, self.indices[idx])
+            return LoaditView(self.loader, self.indices[idx])
+        if isinstance(idx, Sequence):
+            return LoaditView(self.loader, self.indices[idx])
 
         return self.loader.get(self.indices[idx], self.preload_fn)
 
     def __len__(self):
         return len(self.indices)
 
-    def __iter__(self):
-        idx = 0
-        while True:
-            try:
-                yield self[idx]
-                idx += 1
-            except IndexError:
-                return
 
 
-class LoadIt:
+class LoadIt(SequenceView):
     def __init__(
         self,
         create_it: Optional[Callable[None, Iterable]],
         root_dir: Union[str, Path] = "cache/",
-        max_shard_length: Optional[Union[str, int]] = '64mb',
+        max_shard_length: Optional[Union[str, int]] = "64mb",
         max_cache_size: int = 128,
         max_workers: int = 3,
         memory_limit: Optional[int] = None,
@@ -77,16 +83,23 @@ class LoadIt:
         if isinstance(max_shard_length, str):
             match = re.fullmatch("([0-9]+)mb", max_shard_length.lower())
             if not match:
-                raise ValueError("Invalid max_shard_length! Must be an integer or match ([0-9]+)mb.")
+                raise ValueError(
+                    "Invalid max_shard_length! Must be an integer or match ([0-9]+)mb."
+                )
             length_mb = float(match.group(1))
-
 
             metadata = dataset_metadata(root_dir)
             if metadata is None:
-                max_shard_length = int(length_mb * (2**20) / size_estimator(create_it(), compression=compression))
+                max_shard_length = int(
+                    length_mb
+                    * (2**20)
+                    / size_estimator(create_it(), compression=compression)
+                )
             else:
                 max_shard_length = metadata.max_shard_length
-                logger.warn("User-specified max_shard_length in mb for an already-existing ShardedDataset! Ignoring user specification")
+                logger.warn(
+                    "User-specified max_shard_length in mb for an already-existing ShardedDataset! Ignoring user specification"
+                )
 
         if create_it is not None:
             self.writer_pool = WriterPool(
@@ -149,6 +162,9 @@ class LoadIt:
         return self.get(idx)
 
     def get(self, idx: int, preload_fn: Optional[PreloadType] = None) -> Any:
+        if isinstance(idx, Sequence):
+            return LoaditView(self, SequenceView(idx))
+
         if isinstance(idx, slice):
             step = idx.step or 1
             start = idx.start or 0
@@ -159,9 +175,8 @@ class LoadIt:
 
             if stop < 0:
                 stop = stop + len(self)
+            return self[range(start, stop, step)]
 
-            indices = list(range(start, stop, step))
-            return View(self, indices)
         if idx < 0:
             idx = len(self) + idx
         start_idx = self.get_start_idx(idx)
@@ -204,11 +219,3 @@ class LoadIt:
         self.shards.set_length()
         self.shards.finalize_length(True)
 
-    def __iter__(self):
-        idx = 0
-        while True:
-            try:
-                yield self[idx]
-                idx += 1
-            except IndexError:
-                return
