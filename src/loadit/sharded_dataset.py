@@ -166,7 +166,8 @@ class ShardedDataset(AsyncCacheBase):
         with self.writer_file_lock:
             with self.fs.open(self.metadata_path, "r") as fp:
                 metadata_json = json.load(fp)
-                return Metadata(**metadata_json)
+                result = Metadata(**metadata_json)
+        return result
 
     def write_metadata(self, metadata):
         if isinstance(metadata, Metadata):

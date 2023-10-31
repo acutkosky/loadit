@@ -10,6 +10,13 @@ from collections.abc import Sequence
 import numpy as np
 
 
+def is_sequence(s):
+    seq_attrs = ['__getitem__', '__len__', '__iter__']
+    for at in seq_attrs:
+        if not hasattr(s, at):
+            return False
+    return True
+
 def size_estimator(it: Iterable, num_samples: int = 16, compression = None) -> int:
     buffer = []
     for count, x in enumerate(it):
@@ -41,15 +48,17 @@ class SequenceView(Sequence):
     def __init__(self, seq: Sequence, indices: Optional[Union[Sequence, Callable]] = None):
         self.seq = seq
         self.indices = indices
-        if isinstance(indices, Sequence):
+        if is_sequence(indices):
             self.index_map = indices.__getitem__
         elif isinstance(indices, Callable):
             self.index_map = indices
         else:
             self.index_map = lambda idx: idx
 
-    def __getitem__(self, idx: Union[int, Sequence, Callable]):
-        if isinstance(idx, Sequence) or isinstance(idx, Callable):
+    def __getitem__(self, *idx: Union[int, Sequence, Callable]):
+        if len(idx) == 1:
+            idx = idx[0]
+        if is_sequence(idx) or isinstance(idx, Callable):
             return SequenceView(self, idx)
         else:
             return self.seq[self.index_map(idx)]
@@ -111,7 +120,7 @@ def chunk_shuffle_idx(chunk_size: int, length: int, seed: Optional=None):
 
     rng = np.random.default_rng(seed)
 
-    permutations = np.concat([i*chunk_size + rng.permutation(chunk_size) for i in range(num_chunks)])
+    permutations = np.concatenate([i*chunk_size + rng.permutation(chunk_size) for i in range(num_chunks)])
     return permutations
 
 

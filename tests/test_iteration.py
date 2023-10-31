@@ -16,6 +16,7 @@ def create_it(N: int = 100000, delay=0):
         result = {
             "array": get_array(n),
             "label": f"item_{n}",
+            "index": n,
         }
         if delay > 0:
             time.sleep(delay)
@@ -25,6 +26,7 @@ def create_it(N: int = 100000, delay=0):
 def validate_data(data, n):
     assert np.array_equal(data["array"], get_array(n))
     assert data["label"] == f"item_{n}"
+    assert data["index"] == n
 
 
 def create_fixture(name, values):
@@ -367,3 +369,27 @@ def test_slicing(loader, it_size):
     for i, x in enumerate(loader[-10 : it_size - 4 : 2]):
         validate_data(x, it_size - 10 + i * 2)
     assert i == 2
+
+
+def test_view(loader, it_size):
+    indices1 = [2,4,5,9]
+    indices2 = [2,3]
+    for i, x in enumerate(loader[indices1][2,3]):
+        validate_data(x, indices1[indices2[i]])
+
+
+def test_concat(loader, it_size):
+    concat  = loadit.ConcatableSequence(loader,loader[3,4])
+    validate_data(concat[it_size + 1], 4)
+
+def test_shuffle(loader, it_size):
+    chunk_size = 70
+    shuffled = loadit.chunk_shuffle(loader, chunk_size=chunk_size, length=it_size)
+    seen_indices = set()
+    for i, x in enumerate(shuffled):
+        idx = x["index"]
+        assert idx not in seen_indices
+        assert idx // chunk_size == i // chunk_size
+        seen_indices.add(idx)
+
+

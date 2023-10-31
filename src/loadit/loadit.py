@@ -1,7 +1,7 @@
 from .sharded_dataset import ShardedDataset, dataset_metadata
 from .dict_cache import DictCache
 from .writer import WriterPool
-from .util import size_estimator, SequenceView
+from .util import size_estimator, SequenceView, is_sequence
 from typing import Any, Union, Optional, Iterable, Callable, List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -51,13 +51,15 @@ class LoaditView(SequenceView):
             self.indices, loader, idx
         )
 
-    def __getitem__(self, idx):
+    def __getitem__(self, *idx):
+        if len(idx) == 1:
+            idx = idx[0]
         if isinstance(idx, slice):
             return LoaditView(self.loader, self.indices[idx])
-        if isinstance(idx, Sequence):
+        if is_sequence(idx):
             return LoaditView(self.loader, self.indices[idx])
 
-        return self.loader.get(self.indices[idx], self.preload_fn)
+        return self.loader.get(self.indices[idx], preload_fn=self.preload_fn)
 
     def __len__(self):
         return len(self.indices)
@@ -156,13 +158,15 @@ class LoadIt(SequenceView):
     def get_start_idx(self, idx: int) -> int:
         shard_offset = idx % self.shards.max_shard_length
         start_idx = idx - shard_offset
-        return start_idx
+        return int(start_idx)
 
-    def __getitem__(self, idx: int) -> Any:
-        return self.get(idx)
+    def __getitem__(self, *idx: int) -> Any:
+        return self.get(*idx)
 
-    def get(self, idx: int, preload_fn: Optional[PreloadType] = None) -> Any:
-        if isinstance(idx, Sequence):
+    def get(self, *idx: int, preload_fn: Optional[PreloadType] = None) -> Any:
+        if len(idx) == 1:
+            idx = idx[0]
+        if is_sequence(idx):
             return LoaditView(self, SequenceView(idx))
 
         if isinstance(idx, slice):

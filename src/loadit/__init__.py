@@ -7,5 +7,12 @@ from .cache_base import AsyncCacheBase
 from .dict_cache import DictCache
 from .writer import WriterPool
 from .loadit import LoadIt
-from .util import size_estimator
+from .util import (
+    size_estimator,
+    ConcatableSequence,
+    SequenceView,
+    CircularSequence,
+    chunk_shuffle_idx,
+    chunk_shuffle,
+)
 from .__about__ import __version__
