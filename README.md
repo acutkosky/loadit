@@ -99,14 +99,14 @@ loader.wait_until_all_cached()
 ## Other goodies
 The following utilities operate on any python objects that have a  `len` and a `__getitem__`:
 ```python
-view = loadit.SequenceView(a, [2,3,1,2,3,5,7,8,9,9,1])
+view = loadit.SequenceView(a, [2,3,1,2,3,5,7,8,9,10,1])
 assert view[1] == a[3]
 
-new_view = view[lambda idx: -idx]
-assert new_view[1] == a[9]
+new_view = loadit.SequenceView(view, lambda idx: -2*idx, length=len(view)//2)
+assert new_view[1] == a[10]
 
 newer_view = new_view[0,3,4]
-assert newer_view[1] == a[8]
+assert newer_view[1] == a[5]
 
 a_b_c = loadit.ConcatableSequence(a,b) + loadit.ConcatableSequence(b)
 # a_b_c is equivalent to a + b + c if a,b,c were all lists.

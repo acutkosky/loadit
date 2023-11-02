@@ -8,6 +8,7 @@ from itertools import chain
 from collections import deque
 from collections.abc import Sequence
 import numpy as np
+import json
 
 
 def is_sequence(s):
@@ -48,30 +49,43 @@ def deep_getsizeof(*obs, seen_ids=set()):
 
 class SequenceView(Sequence):
     def __init__(
-        self, seq: Sequence, indices: Optional[Union[Sequence, Callable]] = None
+        self,
+        seq: Sequence,
+        indices: Optional[Union[Sequence, Callable]] = None,
+        length: Optional[int] = None,
     ):
         self.seq = seq
         self.indices = indices
+        self.length = None
         if is_sequence(indices):
             self.index_map = indices.__getitem__
         elif isinstance(indices, Callable):
+            if length is None:
+                raise ValueError(
+                    "cannot specify a callable indices argument without manually providing the length!"
+                )
             self.index_map = indices
+            self.length = length
         else:
             self.index_map = lambda idx: idx
 
-    def __getitem__(self, *idx: Union[int, Sequence, Callable]):
+    def __getitem__(self, *idx: Union[int, Sequence]):
         if len(idx) == 1:
             idx = idx[0]
-        if is_sequence(idx) or isinstance(idx, Callable):
+        if is_sequence(idx):
             return SequenceView(self, idx)
         else:
             return self.seq[self.index_map(idx)]
 
     def __len__(self):
+        if self.length is not None:
+            return self.length
         if self.indices is None:
-            return len(self.seq)
+            self.length = len(self.seq)
+            return self.length
         else:
-            return len(self.indices)
+            self.length = len(self.indices)
+            return self.length
 
 
 class InterleaveSequences(Sequence):
@@ -144,7 +158,7 @@ class ConcatableSequence(Sequence):
 
 
 class RepeatSequence(Sequence):
-    def __init__(self, seq: Sequence, repeats: Optional[int]=None):
+    def __init__(self, seq: Sequence, repeats: Optional[int] = None):
         self.seq = seq
         self.repeats = repeats
 

@@ -23,33 +23,30 @@ def preload_next_shard(loader: Any, idx: int) -> Iterable[List[int]]:
     ]
 
 
-def preload_next_shard_in_indices(
-    indices: List[int], loader: Any, idx: int, num_to_preload: Optional[int] = None
-) -> Iterable[List[int]]:
-    if num_to_preload is None:
-        num_to_preload = loader.max_workers // 2
-    next_indices = list(
-        set(
-            [
-                loader.get_start_idx(
-                    indices[min(len(indices) - 1, idx + i)]
-                    + loader.shards.max_shard_length
-                )
-                for i in range(1, num_to_preload)
-            ]
-        )
-    )
-    result = [[idx] for idx in next_indices]
-    return result
-
-
 class LoaditView(SequenceView):
     def __init__(self, loader, indices: SequenceView):
         self.loader = loader
         self.indices = indices
-        self.preload_fn = lambda loader, idx: preload_next_shard_in_indices(
-            self.indices, loader, idx
+
+    def preload_fn(self, loader, idx: int) -> Sequence[List[int]]:
+        assert loader == self.loader
+        num_to_preload = self.loader.max_workers // 2
+        next_indices = list(
+            set(
+                [
+                    loader.get_start_idx(
+                        self.indices[min(len(self.indices) - 1, idx + i)]
+                        + loader.shards.max_shard_length
+                    )
+                    for i in range(1, num_to_preload)
+                ]
+            )
         )
+        result = [[idx] for idx in next_indices]
+        return result
+
+    def __len__(self):
+        return len(self.indices)
 
     def __getitem__(self, *idx):
         if len(idx) == 1:
@@ -60,9 +57,6 @@ class LoaditView(SequenceView):
             return LoaditView(self.loader, self.indices[idx])
 
         return self.loader.get(self.indices[idx], preload_fn=self.preload_fn)
-
-    def __len__(self):
-        return len(self.indices)
 
 
 class LoadIt(SequenceView):
@@ -77,6 +71,7 @@ class LoadIt(SequenceView):
         compression: Optional[str] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
         preload_all_async=False,
+        info=None,
     ):
         if create_it is None:
             max_shard_length = None
@@ -118,6 +113,7 @@ class LoadIt(SequenceView):
             max_shard_length=max_shard_length,
             load_fn=shard_load_fn,
             compression=compression,
+            info=info,
         )
         self.max_workers = max_workers
         if self.max_workers > 1:
@@ -143,6 +139,12 @@ class LoadIt(SequenceView):
                         pass
 
                 self.executor.submit(iterate_all)
+
+    def info(self):
+        return self.shards.info()
+
+    def set_info(self, info: Any):
+        self.shards.set_info(info)
 
     def all_cached_to_disk(self) -> bool:
         return self.shards.all_present()

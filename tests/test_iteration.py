@@ -366,6 +366,7 @@ def test_negative_indices(loader, it_size):
 def test_slicing(loader, it_size):
     for i, x in enumerate(loader[11:21][::-5]):
         validate_data(x, 20 - i * 5)
+    assert i == 1
 
     for i, x in enumerate(loader[-10 : it_size - 4 : 2]):
         validate_data(x, it_size - 10 + i * 2)
@@ -486,3 +487,41 @@ def test_interleave(tmp_path):
         idx = idx % len(test_lists)
 
         assert x["index"] == check_value
+
+
+def test_info(tmp_path):
+    loader1 = loadit.LoadIt(
+        create_it=lambda: create_it(N=300),
+        root_dir=tmp_path,
+        max_shard_length=100,
+        max_cache_size=5,
+        max_workers=3,
+        memory_limit=None,
+        info={"hello": "there"},
+    )
+    loader2 = loadit.LoadIt(
+        create_it=None,
+        root_dir=tmp_path,
+        max_shard_length=None,
+        max_workers=3,
+        memory_limit=None,
+    )
+
+    info2 = loader2.info()
+
+    assert len(info2) == 1
+    assert info2["hello"] == "there"
+
+    for i in range(4):
+        loader1[i * 50]
+
+    loader1.set_info({"hello": "goodbye", "a": [{'1': 2}, "b"]})
+
+    info2 = loader2.info()
+
+    assert len(info2) == 2
+    assert info2["hello"] == "goodbye"
+    assert len(info2["a"]) == 2
+    assert len(info2["a"][0]) == 1
+    assert info2["a"][0]['1'] == 2
+    assert info2["a"][1] == "b"
