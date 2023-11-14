@@ -28,6 +28,7 @@ class Metadata(NamedTuple):
     length_final: bool
     compression: Optional[str]
     version: int
+    info: Any
 
 
 def is_consistent_metadata(m1: Metadata, m2: Metadata) -> bool:
@@ -113,7 +114,8 @@ class ShardedDataset(AsyncCacheBase):
             length=0,
             length_final=False,
             compression=compression,
-            version=2,
+            version=4,
+            info=info,
         )
         self.writer_file_lock = FileLock(self.lock_dir / "writer_lock.lock")
         self.fs = fsspec.filesystem("file")
@@ -183,6 +185,12 @@ class ShardedDataset(AsyncCacheBase):
         metadata = self.metadata()._asdict()
         metadata[key] = value
         self.write_metadata(metadata)
+
+    def info(self):
+        return self.metadata().info
+
+    def set_info(self, info):
+        return self.set_metadata_entry("info", info)
 
     def get_key(self, path):
         return int(path.stem.split(".")[0])

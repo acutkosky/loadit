@@ -381,8 +381,9 @@ def test_view(loader, it_size):
 
 
 def test_concat(loader, it_size):
-    concat = loadit.ConcatableSequence(loader, loader[3, 4])
+    concat = loadit.ConcatableSequence(loader, loader[3, 4], loader)
     validate_data(concat[it_size + 1], 4)
+    validate_data(concat[it_size  + 2 + 2], 2)
 
 
 def test_shuffle(loader, it_size):

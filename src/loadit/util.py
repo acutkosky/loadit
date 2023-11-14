@@ -143,9 +143,9 @@ class ConcatableSequence(Sequence):
                 except IndexError:
                     self.lengths[seq_idx] = len(self.seqs[seq_idx])
                     l = self.lengths[seq_idx]
-                idx -= l
-                if idx < 0:
-                    raise IndexError
+            idx -= l
+            if idx < 0:
+                raise IndexError
 
         raise IndexError
 
