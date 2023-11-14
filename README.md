@@ -48,6 +48,13 @@ for i in range(len(loader)):
 print(loader[-2])
 # once the above has run, this will be fast:
 print(loader[-10])
+
+
+# You can store metadata like so (it must be representable in json):
+loader.set_info({'url': 'www.mydataset.com/data', 'contact': 'Tarzan'})
+
+# The metadata is now accessible via:
+loaded_info = loader.info()
 ```
 
 ### What if I cannot store a copy of my data on disk??
