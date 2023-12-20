@@ -123,7 +123,6 @@ class WriterPool:
         self.queues = {writer: [] for writer in self.writers}
 
     def add_to_queue(self, start_idx: int, shards: ShardedDataset) -> Optional[Writer]:
-        # returns None if the selected writer does not need to be scheduled.
         writer_to_append = None
         smallest_gap = float("inf")
         with self.queue_lock:

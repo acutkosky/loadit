@@ -62,19 +62,24 @@ class LoaditView(SequenceView):
 class LoadIt(SequenceView):
     def __init__(
         self,
-        create_it: Optional[Callable[None, Iterable]],
-        root_dir: Union[str, Path] = "cache/",
+        root_dir: Union[str, Path],
+        create_it: Optional[Callable[None, Iterable]] = None,
         max_shard_length: Optional[Union[str, int]] = "64mb",
         max_cache_size: int = 128,
-        max_workers: int = 3,
+        max_workers: int = 1,
         memory_limit: Optional[int] = None,
         compression: Optional[str] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
         preload_all_async=False,
         info=None,
+        iterator_thread_safe=False,
+        length=None,
     ):
         if create_it is None:
             max_shard_length = None
+
+        self.manual_length = length
+
 
         if isinstance(max_shard_length, str):
             match = re.fullmatch("([0-9]+)mb", max_shard_length.lower())
@@ -100,7 +105,7 @@ class LoadIt(SequenceView):
         if create_it is not None:
             self.writer_pool = WriterPool(
                 create_it=create_it,
-                num_workers=max_workers,
+                num_workers=max_workers if iterator_thread_safe else 1,
             )
             shard_load_fn = self.writer_pool.load_fn
         else:

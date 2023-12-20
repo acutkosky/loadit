@@ -147,6 +147,11 @@ class ShardedDataset(AsyncCacheBase):
         self.initialize_timestamps()
         super().__init__(max_size_bytes, load_fn)
 
+    def __del__(self):
+        self.observer.stop()
+        self.observer.join()
+        super().__del__()
+
     def initialize_timestamps(self):
         with self.writer_file_lock:
             all_shard_info = self.get_all_shards()

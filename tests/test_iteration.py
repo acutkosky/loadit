@@ -76,6 +76,19 @@ def one_item_memory_size():
 
 
 @pytest.fixture
+def small_cache_loader_multiwrite(tmp_path):
+    loader = loadit.LoadIt(
+        create_it=lambda: create_it(),
+        root_dir=tmp_path,
+        max_shard_length=16,
+        max_cache_size=10,
+        max_workers=5,
+        memory_limit=20 * 16 * one_item_memory_size(),
+        iterator_thread_safe=True,
+    )
+    return loader
+
+@pytest.fixture
 def small_cache_loader(tmp_path):
     loader = loadit.LoadIt(
         create_it=lambda: create_it(),
@@ -327,10 +340,10 @@ def test_set_length_from_shards(full_save_loader, tmp_path):
     assert len(new_loader) == 16
 
 
-def test_uses_multiple_writers(small_cache_loader):
-    loader = small_cache_loader
+def test_uses_multiple_writers(small_cache_loader_multiwrite):
+    loader = small_cache_loader_multiwrite
     loader.preload_fn = None
-    x = small_cache_loader[11 * loader.shards.max_shard_length]
+    x = loader[11 * loader.shards.max_shard_length]
 
     assert (
         loader.writer_pool.writers[0].current_idx
@@ -338,7 +351,7 @@ def test_uses_multiple_writers(small_cache_loader):
     )
     assert loader.writer_pool.writers[1].current_idx == -1
 
-    x = small_cache_loader[loader.shards.max_shard_length]
+    x = loader[loader.shards.max_shard_length]
 
     assert (
         loader.writer_pool.writers[0].current_idx
