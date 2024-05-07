@@ -128,7 +128,7 @@ repeat = loadit.RepeatSequence(a, repeats=3)
 shuffled = chunk_shuffle(seq, chunk_size=128, length=1024)
 # bins indices into groups of 128 and returns a view of the
 # first 1024 elements of seq that is shuffled within each bin.
-# if chunk_size of length is unspecified, they default to len(seq).
+# if chunk_size or length is unspecified, they default to len(seq).
 ```
 
 ### Features
@@ -154,33 +154,39 @@ The `LoadIt` initialization signature is:
 class LoadIt
     def __init__(
         self,
-        create_it: Optional[Callable[None, Iterable]],
         root_dir: Union[str, Path],
-        max_shard_length: Union[str,int] = "64mb",
+        create_iter: Optional[Callable[None, Iterable]] = None,
+        max_shard_length: Optional[Union[str, int]] = "64mb",
         max_cache_size: int = 128,
-        max_workers: int = 3,
+        max_workers: int = 1,
         memory_limit: Optional[int] = None,
         compression: Optional[str] = None,
-        preload_fn: Optional[Callable[[Self, int], Iterable[List[int]]]] = preload_next_shard,
-        preload_all_async: False,
+        preload_fn: Optional[PreloadType] = preload_next_shard,
+        preload_all_async: bool=False,
+        info: Any=None,
+        iterator_thread_safe: bool=False,
+        length: Optional[int]=None,
     ):
 ```
 The arguments are:
-* `create_it`: this is a function that takes no arguments and returns a new iterable (that is, it is possible to do `for x in create_it():`). If `create_it` is `None`, then we cannot load new iterates from scratch. However, if all of the data has already been cached on disk at `root_dir`, then things will still work fine - we don't need the iterator anymore.
 * `root_dir`: this is where we will stash iterations on the file system. If you instantiate a new `LoadIt` instance
-with the same `root_dir`, then either `create_it` should return the same iterator, or you can set `create_it` to `None`
+with the same `root_dir`, then either `create_iter` should return the same iterator, or you can set `create_iter` to `None`
 and simply use the cached data directly.
+* `create_iter`: this is a function that takes no arguments and returns a new iterable (that is, it is possible to do `for x in create_iter():`). If `create_iter` is `None`, then we cannot load new iterates from scratch. However, if all of the data has already been cached on disk at `root_dir`, then things will still work fine - we don't need the iterator anymore.
 * `max_shard_length`: Each file (a "shard") stored in the `root_dir` directory will contain at most this many iterations.
 You can also specify a string ending in `mb`, such as `32mb`. This will automatically set the length so that the size of the shards will be approximately the given number of megabytes.
 Note that this approximation is based on the size of the first 128 iterations, and so may be poor if there is high variation in iteration size.
 * `max_cache_size`: We will keep at most this shards in main memory (i.e. loaded in from disk) at once.
-* `max_workers`: This is the number of worker threads that will be spawned to write shards. CAUTION: if `max_workers` is >1, then the function `create_it` must be safe to run in multiple threads.
+* `max_workers`: This is the number of worker threads that will be spawned to write shards. CAUTION: if `max_workers` is >1, then the function `create_iter` must be safe to run in multiple threads. This must be explicitly acknowledged by setting `iterator_thread_safe` to `True`.
 * `memory_limit`: The total size of all shard files stored on disk in `root_dir` will be at most this many bytes.
 * `compression`: You can provide an optional string representing a compression format to use when caching data on disk. Compression uses `fsspec`, so anything in `fsspec.available_compressions()` is valid.
 * `preload_fn`: This function will be called every time you request an iterate to schedule pre-fetching of further iterates. By default it 
 fetches the next `max_workers/2` shards. Iterating over `preload_fn(loader, idx)` should yield lists of indices. For each list, a seperate thread
 will go in order over the list and make sure that each index is in memory.
 * `preload_all_async`: if True, then we will iterate through the iterator in the background and cache all iterations to disk. If False, then we will only iterate to cache iterations that are actually requested (plus a few speculative extra iterations specified by `preload_fn`).
+* `info`: optional metadata that will be stored with the cached data. Can be accessed with the `.info`  attribute.
+* `iterator_thread_safe`: a flag that indicates that it is safe to spawn multiple copies of the iterator with `create_iter` in different threads. If this is `False`, then setting `max_workers` greater than 1 will raise an error.
+* `length`: a optional manual specification  of the length of the iterator, if known.
 
 
 

@@ -64,20 +64,23 @@ class LoadIt(SequenceView):
     def __init__(
         self,
         root_dir: Union[str, Path],
-        create_it: Optional[Callable[None, Iterable]] = None,
+        create_iter: Optional[Callable[None, Iterable]] = None,
         max_shard_length: Optional[Union[str, int]] = "64mb",
         max_cache_size: int = 128,
         max_workers: int = 1,
         memory_limit: Optional[int] = None,
         compression: Optional[str] = None,
         preload_fn: Optional[PreloadType] = preload_next_shard,
-        preload_all_async=False,
-        info=None,
-        iterator_thread_safe=False,
-        length=None,
+        preload_all_async: bool=False,
+        info: Any=None,
+        iterator_thread_safe: bool=False,
+        length: Optional[int]=None,
     ):
-        if create_it is None:
+        if create_iter is None:
             max_shard_length = None
+
+        if not iterator_thread_safe and max_workers != 1:
+            raise ValueError(f'If you want to use max_workers>1, you must set iterator_thread_safe=True (requested max_workers={max_workers})')
 
         self.manual_length = length
 
@@ -95,7 +98,7 @@ class LoadIt(SequenceView):
                 max_shard_length = int(
                     length_mb
                     * (2**20)
-                    / size_estimator(_get_iter(create_it), compression=compression)
+                    / size_estimator(_get_iter(create_iter), compression=compression)
                 )
             else:
                 max_shard_length = metadata.max_shard_length
@@ -103,10 +106,10 @@ class LoadIt(SequenceView):
                     "User-specified max_shard_length in mb for an already-existing ShardedDataset! Ignoring user specification"
                 )
 
-        if create_it is not None:
+        if create_iter is not None:
             self.writer_pool = WriterPool(
-                create_it=create_it,
-                num_workers=max_workers if iterator_thread_safe else 1,
+                create_iter=create_iter,
+                num_workers=max_workers
             )
             shard_load_fn = self.writer_pool.load_fn
         else:
@@ -121,7 +124,7 @@ class LoadIt(SequenceView):
             compression=compression,
             info=info,
         )
-        if create_it is None:
+        if create_iter is None:
             self.shards.stop_observer()
 
         self.max_workers = max_workers

@@ -12,7 +12,7 @@ def get_array(n):
     return (np.reshape(np.arange(0, (n + 1) * 10000, n + 1), (100, 100)),)
 
 
-def create_it(N: int = 100000, delay=0):
+def create_iter(N: int = 100000, delay=0):
     for n in range(N):
         result = {
             "array": get_array(n),
@@ -69,7 +69,7 @@ def memory_limit(request, max_shard_length):
 
 
 def one_item_memory_size():
-    it = create_it(N=10)
+    it = create_iter(N=10)
     minishard = list(it)
     s = pickle.dumps(minishard)
     return len(s) / 10
@@ -78,24 +78,25 @@ def one_item_memory_size():
 @pytest.fixture
 def small_cache_loader_multiwrite(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda: create_it(),
+        create_iter=lambda: create_iter(),
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=10,
         max_workers=5,
-        memory_limit=20 * 16 * one_item_memory_size(),
         iterator_thread_safe=True,
+        memory_limit=20 * 16 * one_item_memory_size(),
     )
     return loader
 
 @pytest.fixture
 def small_cache_loader(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda: create_it(),
+        create_iter=lambda: create_iter(),
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=10,
         max_workers=5,
+        iterator_thread_safe=True,
         memory_limit=20 * 16 * one_item_memory_size(),
     )
     return loader
@@ -103,11 +104,12 @@ def small_cache_loader(tmp_path):
 
 def nowriter_loader(tmp_path):
     loader = loadit.LoadIt(
-        create_it=None,
+        create_iter=None,
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     return loader
@@ -116,11 +118,12 @@ def nowriter_loader(tmp_path):
 @pytest.fixture
 def full_save_loader(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda: create_it(N=16 * 100),
+        create_iter=lambda: create_iter(N=16 * 100),
         root_dir=tmp_path,
         max_shard_length=16,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     return loader
@@ -136,14 +139,15 @@ def loader(
     memory_limit,
     max_workers,
 ):
-    create_it_fn = lambda: create_it(it_size, delay)
+    create_iter_fn = lambda: create_iter(it_size, delay)
     loader = loadit.LoadIt(
-        create_it=create_it_fn,
+        create_iter=create_iter_fn,
         root_dir=tmp_path,
         max_shard_length=max_shard_length,
         max_cache_size=max_cache_size,
         memory_limit=memory_limit,
         max_workers=max_workers,
+        iterator_thread_safe=max_workers > 1,
     )
 
     yield loader
@@ -154,13 +158,14 @@ def loader(
 
 
 def test_shard_size_mb(tmp_path):
-    create_it = lambda: [np.arange(i, i + 128) for i in range(2024)]
+    create_iter = lambda: [np.arange(i, i + 128) for i in range(2024)]
     loader = loadit.LoadIt(
-        create_it=create_it,
+        create_iter=create_iter,
         root_dir=tmp_path,
         max_shard_length="1mb",
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
 
@@ -168,11 +173,12 @@ def test_shard_size_mb(tmp_path):
         pass
 
     cached_loader = loadit.LoadIt(
-        create_it=None,
+        create_iter=None,
         root_dir=tmp_path,
         max_shard_length=None,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     for i, x in enumerate(loader):
@@ -186,21 +192,22 @@ def test_shard_size_mb(tmp_path):
 
 
 def test_parallel_loaders(tmp_path, delay):
-    create_it_fn = lambda: create_it(2000, delay)
+    create_iter_fn = lambda: create_iter(2000, delay)
 
-    def make_loader(create_it_fn):
+    def make_loader(create_iter_fn):
         loader = loadit.LoadIt(
-            create_it=create_it_fn,
+            create_iter=create_iter_fn,
             root_dir=tmp_path,
             max_shard_length=16,
             max_cache_size=32,
             memory_limit=None,
             max_workers=10,
+            iterator_thread_safe=True,
         )
         return loader
 
     def iterate():
-        l = make_loader(create_it_fn)
+        l = make_loader(create_iter_fn)
         for i, x in enumerate(l):
             validate_data(x, i)
         l.shards.observer.unschedule_all()
@@ -227,11 +234,12 @@ def test_loader_can_iterate(loader, it_size, verify_sizes):
 
 def test_loader_can_compress(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda: create_it(N=1000),
+        create_iter=lambda: create_iter(N=1000),
         root_dir=tmp_path,
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
         preload_all_async=True,
         compression="zstd",
@@ -251,11 +259,12 @@ def test_loader_can_compress(tmp_path):
 
 def test_preload_when_infinite_memory(tmp_path):
     loader = loadit.LoadIt(
-        create_it=lambda: create_it(N=1000),
+        create_iter=lambda: create_iter(N=1000),
         root_dir=tmp_path,
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
         preload_all_async=True,
     )
@@ -413,11 +422,12 @@ def test_shuffle(loader, it_size):
 
 def test_repeat(tmp_path):
     loader1 = loadit.LoadIt(
-        create_it=lambda: create_it(N=100),
+        create_iter=lambda: create_iter(N=100),
         root_dir=os.path.join(tmp_path, "l1"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
 
@@ -433,43 +443,48 @@ def test_repeat(tmp_path):
 
 def test_interleave(tmp_path):
     loader1 = loadit.LoadIt(
-        create_it=lambda: create_it(N=100),
+        create_iter=lambda: create_iter(N=100),
         root_dir=os.path.join(tmp_path, "l1"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     loader2 = loadit.LoadIt(
-        create_it=lambda: create_it(N=10),
+        create_iter=lambda: create_iter(N=10),
         root_dir=os.path.join(tmp_path, "l2"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     loader3 = loadit.LoadIt(
-        create_it=lambda: create_it(N=100),
+        create_iter=lambda: create_iter(N=100),
         root_dir=os.path.join(tmp_path, "l3"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     loader4 = loadit.LoadIt(
-        create_it=lambda: create_it(N=10),
+        create_iter=lambda: create_iter(N=10),
         root_dir=os.path.join(tmp_path, "l4"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
     loader5 = loadit.LoadIt(
-        create_it=lambda: create_it(N=22),
+        create_iter=lambda: create_iter(N=22),
         root_dir=os.path.join(tmp_path, "l5"),
         max_shard_length=100,
         max_cache_size=5,
         max_workers=10,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
 
@@ -506,19 +521,21 @@ def test_interleave(tmp_path):
 
 def test_info(tmp_path):
     loader1 = loadit.LoadIt(
-        create_it=lambda: create_it(N=300),
+        create_iter=lambda: create_iter(N=300),
         root_dir=tmp_path,
         max_shard_length=100,
         max_cache_size=5,
         max_workers=3,
+        iterator_thread_safe=True,
         memory_limit=None,
         info={"hello": "there"},
     )
     loader2 = loadit.LoadIt(
-        create_it=None,
+        create_iter=None,
         root_dir=tmp_path,
         max_shard_length=None,
         max_workers=3,
+        iterator_thread_safe=True,
         memory_limit=None,
     )
 

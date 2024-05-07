@@ -9,18 +9,18 @@ logger = logging.getLogger("loadit")
 class Writer:
     def __init__(
         self,
-        create_it: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
+        create_iter: Optional[Union[Iterable, Callable[None, Iterable]]] = None,
     ):
         assert is_iterator_creator(
-            create_it
+            create_iter
         ), "you must supply a function that creates iterables!"
-        self.it = enumerate(create_it())
+        self.it = enumerate(create_iter())
         self.current_idx = -1
         self.finished = False
-        self.create_it = create_it
+        self.create_iter = create_iter
 
     def reset_iterator(self):
-        self.it = enumerate(self.create_it())
+        self.it = enumerate(self.create_iter())
 
         self.finished = False
         self.current_idx = -1
@@ -90,9 +90,9 @@ def is_iterator(it: Any) -> bool:
         return False
 
 
-def is_iterator_creator(create_it: Any) -> bool:
+def is_iterator_creator(create_iter: Any) -> bool:
     try:
-        return is_iterator(create_it())
+        return is_iterator(create_iter())
     except TypeError:
         return False
 
@@ -110,14 +110,14 @@ class WriterPool:
     def __init__(
         self,
         writers: Optional[List[Writer]] = None,
-        create_it: Optional[Callable[None, Iterable]] = None,
+        create_iter: Optional[Callable[None, Iterable]] = None,
         num_workers: int = 1,
     ):
-        assert exactly_one_not_none(writers, create_it)
+        assert exactly_one_not_none(writers, create_iter)
         if writers is not None:
             self.writers = writers
-        if create_it is not None:
-            self.writers = [Writer(create_it=create_it) for _ in range(num_workers)]
+        if create_iter is not None:
+            self.writers = [Writer(create_iter=create_iter) for _ in range(num_workers)]
         self.queue_lock = Lock()
         # self.queue_cv = Condition()
         self.queues = {writer: [] for writer in self.writers}
