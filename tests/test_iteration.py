@@ -402,6 +402,7 @@ def test_concat(loader, it_size):
 def test_shuffle(loader, it_size):
     chunk_size = 70
     shuffled = loadit.chunk_shuffle(loader, chunk_size=chunk_size, length=it_size)
+    assert len(shuffled) == len(loader)
     seen_indices = set()
     for i, x in enumerate(shuffled):
         idx = x["index"]

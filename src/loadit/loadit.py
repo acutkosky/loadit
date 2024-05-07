@@ -7,6 +7,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
 import re
+from .util import _get_iter
 from collections.abc import Sequence
 
 import logging
@@ -94,7 +95,7 @@ class LoadIt(SequenceView):
                 max_shard_length = int(
                     length_mb
                     * (2**20)
-                    / size_estimator(create_it(), compression=compression)
+                    / size_estimator(_get_iter(create_it), compression=compression)
                 )
             else:
                 max_shard_length = metadata.max_shard_length
@@ -120,6 +121,9 @@ class LoadIt(SequenceView):
             compression=compression,
             info=info,
         )
+        if create_it is None:
+            self.shards.stop_observer()
+
         self.max_workers = max_workers
         if self.max_workers > 1:
             self.executor = ThreadPoolExecutor(max_workers=self.max_workers - 1)
