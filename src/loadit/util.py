@@ -11,6 +11,13 @@ import numpy as np
 import json
 
 
+def _get_iter(create_it):
+    if hasattr(create_it, "__iter__"):
+        return create_it.__iter__()
+    else:
+        return create_it()
+
+
 def is_sequence(s):
     seq_attrs = ["__getitem__", "__len__", "__iter__"]
     for at in seq_attrs:
@@ -25,6 +32,9 @@ def size_estimator(it: Iterable, num_samples: int = 16, compression=None) -> int
         buffer.append(x)
         if count == num_samples - 1:
             break
+    if count == 0:
+        raise ValueError("iterable provided to LoadIt is empty!")
+
     fd, name = tempfile.mkstemp()
     with fsspec.open(name, mode="wb", compression=compression) as f:
         pickle.dump(buffer, f)
@@ -177,12 +187,18 @@ class RepeatSequence(Sequence):
 
 
 def chunk_shuffle_idx(chunk_size: int, length: int, seed: Optional = None):
-    num_chunks = (chunk_size + length - 1) // chunk_size
+    num_chunks = length // chunk_size
 
     rng = np.random.default_rng(seed)
+    last_chunk_size = length - num_chunks * chunk_size
+    if last_chunk_size > 0:
+        last_chunk = [num_chunks * chunk_size + rng.permutation(last_chunk_size)]
+    else:
+        last_chunk = []
 
     permutations = np.concatenate(
         [i * chunk_size + rng.permutation(chunk_size) for i in range(num_chunks)]
+        + last_chunk
     )
     return permutations
 
@@ -190,7 +206,7 @@ def chunk_shuffle_idx(chunk_size: int, length: int, seed: Optional = None):
 def chunk_shuffle(
     seq: Sequence,
     chunk_size: Optional[int],
-    length: Optional[int],
+    length: Optional[int] = None,
     seed: Optional = None,
 ):
     if length is None:
