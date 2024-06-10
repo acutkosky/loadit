@@ -3,6 +3,7 @@ import os
 import time
 from pathlib import Path
 import json
+import contextlib
 from collections import namedtuple
 from typing import Any, List, Optional, Callable, NamedTuple, Dict
 from filelock import FileLock
@@ -72,13 +73,13 @@ class TimestampHandler(PatternMatchingEventHandler):
         self.file_cache.set_timestamp(key, time.time())
 
 
-def dataset_metadata(root_dir: str):
+def dataset_metadata(root_dir: str, mode):
     metadata_path = Path(root_dir) / "metadata.json"
     file_lock = Path(root_dir) / "locks" / "writer_lock.lock"
     if not metadata_path.exists() or not file_lock.exists():
         return None
 
-    flock = FileLock(file_lock)
+    flock = FileLock(file_lock, mode=mode)
     with flock:
         with open(metadata_path, "r") as fp:
             metadata = Metadata(**json.load(fp))
@@ -95,6 +96,7 @@ class ShardedDataset(AsyncCacheBase):
         load_fn: Optional[Callable] = None,
         compression: Optional[str] = None,
         info: Optional[Dict[str, Any]] = None,
+        mode: int = 0o644,
     ):
         self.max_shard_length = max_shard_length
         self.root_dir = Path(root_dir)
@@ -108,6 +110,9 @@ class ShardedDataset(AsyncCacheBase):
         self.scratch_path = self.scratch_dir / "shard.pickle"
 
         self.metadata_path = self.root_dir / "metadata.json"
+        self.completed_flag_path = self.root_dir / "completed"
+
+        self.mode=mode
 
         metadata = Metadata(
             max_shard_length=max_shard_length,
@@ -117,7 +122,11 @@ class ShardedDataset(AsyncCacheBase):
             version=4,
             info=info,
         )
-        self.writer_file_lock = FileLock(self.lock_dir / "writer_lock.lock")
+        if not self.completed_flag_path.exists():
+            self.writer_file_lock = FileLock(self.lock_dir / "writer_lock.lock")
+        else:
+            self.writer_file_lock = contextlib.nullcontext()
+            
         self.fs = fsspec.filesystem("file")
 
         with self.writer_file_lock:
@@ -264,6 +273,7 @@ class ShardedDataset(AsyncCacheBase):
 
     def finalize_length(self, value: bool) -> None:
         self.set_metadata_entry("length_final", value)
+        self.completed_flag_path.touch()
 
     def write_shard(self, start: int, data: List[Any]) -> int:
         if len(data) == 0:

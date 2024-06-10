@@ -75,6 +75,7 @@ class LoadIt(SequenceView):
         info: Any=None,
         iterator_thread_safe: bool=False,
         length: Optional[int]=None,
+        mode: int = 0o644,
     ):
         if create_iter is None:
             max_shard_length = None
@@ -93,7 +94,7 @@ class LoadIt(SequenceView):
                 )
             length_mb = float(match.group(1))
 
-            metadata = dataset_metadata(root_dir)
+            metadata = dataset_metadata(root_dir, mode)
             if metadata is None:
                 max_shard_length = int(
                     length_mb
@@ -123,6 +124,7 @@ class LoadIt(SequenceView):
             load_fn=shard_load_fn,
             compression=compression,
             info=info,
+            mode=mode,
         )
         if create_iter is None:
             self.shards.stop_observer()
